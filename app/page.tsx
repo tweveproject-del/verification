@@ -714,29 +714,29 @@ export default function ConfigInspectorPage() {
     (activeProtocolTab === 'auto' && (cd?.wireguard.present || cd?.slipstream.present));
 
   return (
-    <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-6">
+    <main className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-6">
       {/* Header */}
-      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5 pb-4 border-b border-slate-800/80">
-        <div className="flex items-center gap-3">
+      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3.5 border-b border-slate-800/80">
+        <div className="flex items-start sm:items-center gap-3">
           <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-cyan-400 via-teal-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
             <svg width="22" height="22" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-950" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
             </svg>
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">Tweve Tunnel</h1>
+              <h1 className="text-base sm:text-xl font-bold tracking-tight text-white">Tweve Tunnel</h1>
               <span className="px-2 py-0.5 text-[10px] sm:text-xs font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 whitespace-nowrap">
                 Multi-Protocol Inspector & Verifier
               </span>
             </div>
-            <p className="text-xs text-slate-400 truncate max-w-xl mt-0.5">
+            <p className="text-[11px] sm:text-xs text-slate-400 truncate max-w-xl mt-0.5">
               Decrypt, inspect, and live-verify Cloud UUIDs, VPN config files, and multi-protocol tunnels
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
           <input
             ref={fileInputRef}
             type="file"
@@ -748,7 +748,7 @@ export default function ConfigInspectorPage() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 text-xs sm:text-sm font-medium border border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95"
+            className="w-full sm:w-auto px-3.5 py-2.5 sm:py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 text-xs sm:text-sm font-medium border border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95"
           >
             <svg width="15" height="15" className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
@@ -952,9 +952,9 @@ export default function ConfigInspectorPage() {
 
         {/* Options & Action Toolbar */}
         <div className="mt-3.5 pt-3 border-t border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5 flex-1 min-w-0">
             {/* Inline Passphrase Field */}
-            <div className="flex items-center gap-2 bg-slate-950/90 border border-slate-700/80 focus-within:border-cyan-400 rounded-lg px-3 py-1.5 transition">
+            <div className="flex items-center gap-2 bg-slate-950/90 border border-slate-700/80 focus-within:border-cyan-400 rounded-lg px-3 py-2 sm:py-1.5 transition w-full sm:w-auto">
               <svg width="14" height="14" className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
@@ -963,24 +963,26 @@ export default function ConfigInspectorPage() {
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
                 placeholder="Passphrase (optional)"
-                className="bg-transparent text-xs text-slate-200 placeholder-slate-500 focus:outline-none w-48"
+                className="bg-transparent text-xs text-slate-200 placeholder-slate-500 focus:outline-none w-full sm:w-48"
               />
             </div>
 
             {/* Live Network Probes Toggle Pill */}
-            <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none bg-slate-950/80 border border-slate-800 hover:border-slate-700 px-3 py-1.5 rounded-lg transition shrink-0">
-              <input
-                type="checkbox"
-                checked={runNetworkProbes}
-                onChange={(e) => setRunNetworkProbes(e.target.checked)}
-                className="rounded border-slate-600 text-cyan-500 focus:ring-cyan-500 bg-slate-950 w-4 h-4 cursor-pointer shrink-0"
-              />
-              <span className="whitespace-nowrap">Live Network Probes</span>
+            <label className="flex items-center justify-between sm:justify-start gap-2 text-xs text-slate-300 cursor-pointer select-none bg-slate-950/80 border border-slate-800 hover:border-slate-700 px-3 py-2 sm:py-1.5 rounded-lg transition shrink-0">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={runNetworkProbes}
+                  onChange={(e) => setRunNetworkProbes(e.target.checked)}
+                  className="rounded border-slate-600 text-cyan-500 focus:ring-cyan-500 bg-slate-950 w-4 h-4 cursor-pointer shrink-0"
+                />
+                <span className="whitespace-nowrap">Live Network Probes</span>
+              </div>
             </label>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2 shrink-0 self-end md:self-auto w-full md:w-auto justify-end">
+          <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-stretch sm:justify-end">
             {(input || result) && (
               <button
                 type="button"
@@ -990,7 +992,7 @@ export default function ConfigInspectorPage() {
                   setResult(null);
                   setImportedFileInfo(null);
                 }}
-                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition cursor-pointer active:scale-95"
+                className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs sm:text-sm font-semibold border border-slate-700 transition cursor-pointer active:scale-95 text-center"
               >
                 Clear
               </button>
@@ -999,7 +1001,7 @@ export default function ConfigInspectorPage() {
               type="button"
               disabled={loading || !input.trim()}
               onClick={() => handleInspect()}
-              className="px-6 py-2 rounded-lg bg-gradient-to-r from-cyan-400 to-teal-500 hover:from-cyan-300 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-bold text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-95 shrink-0"
+              className="flex-1 sm:flex-none px-6 py-2.5 sm:py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-500 hover:from-cyan-300 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-bold text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-95 shrink-0"
             >
               {loading ? (
                 <>
@@ -1346,8 +1348,8 @@ export default function ConfigInspectorPage() {
           )}
 
           {/* 4. Protocol Inspector Tab Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1.5 max-w-full sm:flex-wrap">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-1.5 max-w-full -mx-1 px-1 sm:mx-0 sm:px-0 sm:flex-wrap">
               {[
                 { id: 'auto', label: 'Active & Populated Protocols', count: sum.activeProtocolsDetected.length },
                 ...(cd.httpInjectorContainer ? [{ id: 'http_injector', label: 'HTTP Injector (.ehi)', active: true }] : []),
