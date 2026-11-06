@@ -456,6 +456,32 @@ type InspectResponse = {
       supportedProtocols: string[];
       rawJson?: string;
     } | null;
+    isHaTunnelContainer?: boolean;
+    haTunnelContainer?: {
+      wireFormat: string;
+      magic: string;
+      appName: string;
+      clientPackage: string;
+      profileName: string;
+      targetCarrier: string;
+      tunnelMode: string;
+      tunnelModeId: number;
+      serverHost: string;
+      serverPort: number;
+      sni: string;
+      proxyPayload: string;
+      proxyRemote: string;
+      proxyRemotePort: number;
+      blockRoot: boolean;
+      blockPlayStore: boolean;
+      blockTorrent: boolean;
+      hwidLock: boolean;
+      isPasswordProtected: boolean;
+      expiryDate: string;
+      cloudServers: string;
+      rawEnvelopeHexPreview: string;
+      payloadLength: number;
+    } | null;
     ssh: {
       present: boolean;
       activeInMode: boolean;
@@ -598,7 +624,7 @@ export default function ConfigInspectorPage() {
   const [customCloudUrl, setCustomCloudUrl] = useState('');
   const [httpWeakProtocolTab, setHttpWeakProtocolTab] = useState<'openvpn' | 'ssh' | 'v2ray' | 'hysteria' | 'slowdns' | 'wireguard'>('openvpn');
   const [activeProtocolTab, setActiveProtocolTab] = useState<
-    'auto' | 'http_injector' | 'opentunnel' | 'hc' | 'npvs' | 'ssc' | 'creeb' | 'httpweak' | 'darktunnel' | 'v2ray' | 'dnstt' | 'ssh_proxy' | 'hysteria2' | 'wireguard'
+    'auto' | 'http_injector' | 'opentunnel' | 'hc' | 'npvs' | 'ssc' | 'creeb' | 'httpweak' | 'darktunnel' | 'hatunnel' | 'v2ray' | 'dnstt' | 'ssh_proxy' | 'hysteria2' | 'wireguard'
   >('auto');
   const [importedFileInfo, setImportedFileInfo] = useState<{ name: string; size: number } | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -773,6 +799,8 @@ export default function ConfigInspectorPage() {
     activeProtocolTab === 'httpweak' || (activeProtocolTab === 'auto' && Boolean(cd?.httpWeakContainer));
   const showDarkTunnelCard =
     activeProtocolTab === 'darktunnel' || (activeProtocolTab === 'auto' && Boolean(cd?.darkTunnelContainer));
+  const showHaTunnelCard =
+    activeProtocolTab === 'hatunnel' || (activeProtocolTab === 'auto' && Boolean(cd?.haTunnelContainer));
   const showCreebCard =
     activeProtocolTab === 'creeb' || (activeProtocolTab === 'auto' && Boolean(cd?.creebContainer));
   const showV2RayCard =
@@ -815,7 +843,7 @@ export default function ConfigInspectorPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".twt,.tut,.ssc,.npvs,.npvt,.hc,.tnl,.ehi,.ehil,.creeb,.dark,.dark.backup,.json,.txt,.conf"
+            accept=".twt,.tut,.ssc,.npvs,.npvt,.hc,.tnl,.ehi,.ehil,.creeb,.dark,.dark.backup,.hat,.json,.txt,.conf"
             onChange={handleFileUpload}
             className="hidden"
             style={{ display: 'none' }}
@@ -829,12 +857,12 @@ export default function ConfigInspectorPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
             <span>Import Config File</span>
-            <span className="hidden lg:inline text-[10px] text-cyan-300 font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700/60">.twt / .dark / .creeb / .npvs / .hc / .tnl</span>
+            <span className="hidden lg:inline text-[10px] text-cyan-300 font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700/60">.twt / .dark / .creeb / .npvs / .hat / .hc</span>
           </button>
         </div>
       </header>
 
-      {/* Input Section (Supports Drag & Drop for .twt, .tut, .ssc, .npvs, .hc, .tnl, .ehi, .creeb) */}
+      {/* Input Section (Supports Drag & Drop for .twt, .tut, .ssc, .npvs, .npvt, .hat, .hc, .tnl, .ehi, .creeb, .dark) */}
       <section
         onDragOver={(e) => {
           e.preventDefault();
@@ -937,6 +965,15 @@ export default function ConfigInspectorPage() {
               <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.npvs • .npvt V2/V4</div>
             </div>
 
+            {/* 6b. HA Tunnel Plus */}
+            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-amber-500/50 transition">
+              <div className="font-bold text-amber-300 text-[11px] truncate flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+                HA Tunnel Plus
+              </div>
+              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.hat • TNJL Locked Envelope</div>
+            </div>
+
             {/* 7. SSH Custom */}
             <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-yellow-500/50 transition">
               <div className="font-bold text-yellow-300 text-[11px] truncate flex items-center gap-1">
@@ -1007,7 +1044,7 @@ export default function ConfigInspectorPage() {
               onClick={() => fileInputRef.current?.click()}
               className="text-xs text-cyan-400 hover:underline cursor-pointer"
             >
-              Change File (.twt / .creeb / .tut / .ssc / .npvs / .hc / .tnl / .ehi)
+              Change File (.twt / .creeb / .tut / .ssc / .npvs / .npvt / .hat / .hc / .tnl / .ehi / .dark)
             </button>
           </div>
         )}
@@ -1430,7 +1467,8 @@ export default function ConfigInspectorPage() {
                 ...(cd.httpInjectorContainer ? [{ id: 'http_injector', label: 'HTTP Injector (.ehi)', active: true }] : []),
                 ...(cd.openTunnelContainer ? [{ id: 'opentunnel', label: 'OpenTunnel (.tnl)', active: true }] : []),
                 ...(cd.hcContainer ? [{ id: 'hc', label: 'HTTP Custom (.hc)', active: true }] : []),
-                ...(cd.npvsContainer ? [{ id: 'npvs', label: 'NPV Tunnel (.npvs)', active: true }] : []),
+                ...(cd.npvsContainer ? [{ id: 'npvs', label: 'NPV Tunnel (.npvs / .npvt)', active: true }] : []),
+                ...(cd.haTunnelContainer ? [{ id: 'hatunnel', label: 'HA Tunnel (.hat)', active: true }] : []),
                 ...(cd.sscContainer ? [{ id: 'ssc', label: 'SSH Custom (Ssc://)', active: true }] : []),
                 ...(cd.httpWeakContainer ? [{ id: 'httpweak', label: 'HTTP Weak / Tweak (.ht)', active: true }] : []),
                 ...(cd.darkTunnelContainer ? [{ id: 'darktunnel', label: 'Dark Tunnel (.dark)', active: true }] : []),
@@ -3243,6 +3281,168 @@ export default function ConfigInspectorPage() {
                       className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs cursor-pointer hover:opacity-90 transition shadow-md shadow-purple-500/20"
                     >
                       Run Live Verification Probe for {cd.darkTunnelContainer.profileName}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================== HA TUNNEL PLUS (.HAT / TNJL) SEALED ENVELOPE INSPECTOR CARD ==================== */}
+              {showHaTunnelCard && cd.haTunnelContainer && (
+                <div className="bg-slate-900/75 border border-amber-500/40 rounded-2xl p-4 sm:p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-2.5">
+                    <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
+                      <h3 className="text-base font-bold text-white truncate max-w-full">
+                        HA Tunnel Plus Locked Config (<code className="text-amber-300 break-all">{cd.haTunnelContainer.profileName}</code>)
+                      </h3>
+                    </div>
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => copyText('hatSni', cd.haTunnelContainer!.sni)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 cursor-pointer"
+                      >
+                        {copiedKey === 'hatSni' ? 'Copied SNI!' : 'Copy SNI'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyText('hatPayload', cd.haTunnelContainer!.proxyPayload)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 cursor-pointer"
+                      >
+                        {copiedKey === 'hatPayload' ? 'Copied Payload!' : 'Copy Payload'}
+                      </button>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 whitespace-nowrap">
+                        {cd.haTunnelContainer.magic} LOCKED ENVELOPE
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Envelope Metadata Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {[
+                      { label: 'Profile Name', value: cd.haTunnelContainer.profileName },
+                      { label: 'Client Application', value: `${cd.haTunnelContainer.appName} (${cd.haTunnelContainer.clientPackage})` },
+                      { label: 'Target Carrier / Network', value: cd.haTunnelContainer.targetCarrier },
+                      { label: 'Connection Mode', value: `${cd.haTunnelContainer.tunnelMode} [Mode #${cd.haTunnelContainer.tunnelModeId}]` },
+                      { label: 'SNI (Server Name Indication)', value: cd.haTunnelContainer.sni },
+                      { label: 'Outbound Relay Server', value: `${cd.haTunnelContainer.serverHost}:${cd.haTunnelContainer.serverPort}` },
+                      { label: 'Wire Specification', value: cd.haTunnelContainer.wireFormat },
+                      { label: 'Envelope Payload', value: `${cd.haTunnelContainer.payloadLength.toLocaleString()} bytes (Base64 Enclosed)` },
+                      { label: 'Profile Expiration', value: cd.haTunnelContainer.expiryDate },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/90 flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-300/90">
+                            {item.label}
+                          </div>
+                          <div className="text-sm font-mono text-slate-100 truncate mt-0.5" title={item.value}>
+                            {item.value}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copyText(item.label, item.value)}
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 shrink-0 cursor-pointer"
+                        >
+                          {copiedKey === item.label ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Security Matrix Badges */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      HA Tunnel Plus Security & Hardware Enforcement Matrix
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Root Guard:</span>
+                        <span className="font-mono font-bold text-emerald-400">Blocked</span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Play Store:</span>
+                        <span className="font-mono font-bold text-cyan-400">Enforced</span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">HWID Lock:</span>
+                        <span className="font-mono font-bold text-amber-400">Bound</span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Anti-Torrent:</span>
+                        <span className="font-mono font-bold text-rose-400">Filtered</span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Password:</span>
+                        <span className="font-mono font-bold text-slate-400">None</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Custom SNI & HTTP Injection Payload */}
+                  {cd.haTunnelContainer.proxyPayload && (
+                    <div className="p-3.5 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">
+                          Verified HTTP Injection Template & Spoofing Payload
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyText('hatPayloadBox', cd.haTunnelContainer!.proxyPayload)}
+                          className="text-xs text-cyan-400 hover:underline cursor-pointer"
+                        >
+                          {copiedKey === 'hatPayloadBox' ? 'Copied Payload!' : 'Copy Payload'}
+                        </button>
+                      </div>
+                      <pre className="font-mono text-xs text-amber-200/90 whitespace-pre-wrap bg-slate-900 p-2.5 rounded-lg border border-slate-800 select-all">
+                        {cd.haTunnelContainer.proxyPayload}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Cloud Infrastructure & Server Cluster */}
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold uppercase text-[10px]">
+                        Cloud Relay Network
+                      </span>
+                      <span className="text-slate-300">{cd.haTunnelContainer.cloudServers}</span>
+                    </div>
+                    <span className="text-slate-400 font-mono text-[11px]">Art Of Tunnel Cloud v118</span>
+                  </div>
+
+                  {/* Raw Envelope Hex Preview */}
+                  {cd.haTunnelContainer.rawEnvelopeHexPreview && (
+                    <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                          Ciphertext Container Envelope Preview (First 32 Decoded Bytes)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyText('hatHex', cd.haTunnelContainer!.rawEnvelopeHexPreview)}
+                          className="text-xs text-cyan-400 hover:underline cursor-pointer"
+                        >
+                          {copiedKey === 'hatHex' ? 'Copied Hex!' : 'Copy Hex'}
+                        </button>
+                      </div>
+                      <div className="font-mono text-xs text-amber-300/80 break-all bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                        {cd.haTunnelContainer.rawEnvelopeHexPreview}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => handleInspect()}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-600 text-white font-bold text-xs cursor-pointer hover:opacity-90 transition shadow-md shadow-amber-500/20"
+                    >
+                      Run Live Verification Probe for {cd.haTunnelContainer.profileName}
                     </button>
                   </div>
                 </div>
