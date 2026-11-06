@@ -383,6 +383,79 @@ type InspectResponse = {
       wireguardConfig?: string;
       rawHexPreview?: string;
     } | null;
+    isDarkTunnelContainer?: boolean;
+    darkTunnelContainer?: {
+      appName: string;
+      packageName: string;
+      profileName: string;
+      versionName: string;
+      versionCode: number;
+      wireFormat: string;
+      isClosed: boolean;
+      isPasswordProtected: boolean;
+      blockRoot: boolean;
+      blockPlayStore: boolean;
+      isHwidLocked: boolean;
+      hwidList: string[];
+      expireAt: number | null;
+      expireDateFormatted: string;
+      isExpired: boolean;
+      message: string;
+      connectedMessage: string;
+      tunnelType: string;
+      tunnelTypeName: string;
+      protocols: {
+        ssh?: {
+          host: string;
+          port: number;
+          username: string;
+          password?: string;
+        };
+        dnstt?: {
+          nameserver: string;
+          pubkey: string;
+          dnsResolver: string;
+          dnsPort: number;
+        };
+        inject?: {
+          enabled: boolean;
+          mode: string;
+          sni: string;
+          proxyHost: string;
+          proxyPort: number;
+          payload: string;
+          payloadEnhanced: boolean;
+        };
+        openvpn?: {
+          host: string;
+          port: number;
+          username: string;
+          password?: string;
+        };
+        v2ray?: {
+          protocol: string;
+          host: string;
+          port: number;
+          uuid: string;
+          transport: string;
+          tls: boolean;
+          sni: string;
+          wsPath: string;
+          wsHost: string;
+          grpcServiceName: string;
+          mux: boolean;
+          customConfigJson?: string;
+        };
+      };
+      cloud: {
+        hasCloud: boolean;
+        channelUrl: string;
+        groupUrl: string;
+        cloudEndpoint?: string;
+      };
+      supportedProtocols: string[];
+      rawJson?: string;
+    } | null;
     ssh: {
       present: boolean;
       activeInMode: boolean;
@@ -525,7 +598,7 @@ export default function ConfigInspectorPage() {
   const [customCloudUrl, setCustomCloudUrl] = useState('');
   const [httpWeakProtocolTab, setHttpWeakProtocolTab] = useState<'openvpn' | 'ssh' | 'v2ray' | 'hysteria' | 'slowdns' | 'wireguard'>('openvpn');
   const [activeProtocolTab, setActiveProtocolTab] = useState<
-    'auto' | 'http_injector' | 'opentunnel' | 'hc' | 'npvs' | 'ssc' | 'creeb' | 'httpweak' | 'v2ray' | 'dnstt' | 'ssh_proxy' | 'hysteria2' | 'wireguard'
+    'auto' | 'http_injector' | 'opentunnel' | 'hc' | 'npvs' | 'ssc' | 'creeb' | 'httpweak' | 'darktunnel' | 'v2ray' | 'dnstt' | 'ssh_proxy' | 'hysteria2' | 'wireguard'
   >('auto');
   const [importedFileInfo, setImportedFileInfo] = useState<{ name: string; size: number } | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -698,6 +771,8 @@ export default function ConfigInspectorPage() {
     activeProtocolTab === 'ssc' || (activeProtocolTab === 'auto' && Boolean(cd?.sscContainer));
   const showHttpWeakCard =
     activeProtocolTab === 'httpweak' || (activeProtocolTab === 'auto' && Boolean(cd?.httpWeakContainer));
+  const showDarkTunnelCard =
+    activeProtocolTab === 'darktunnel' || (activeProtocolTab === 'auto' && Boolean(cd?.darkTunnelContainer));
   const showCreebCard =
     activeProtocolTab === 'creeb' || (activeProtocolTab === 'auto' && Boolean(cd?.creebContainer));
   const showV2RayCard =
@@ -740,7 +815,7 @@ export default function ConfigInspectorPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".twt,.tut,.ssc,.npvs,.npvt,.hc,.tnl,.ehi,.ehil,.creeb,.json,.txt,.conf"
+            accept=".twt,.tut,.ssc,.npvs,.npvt,.hc,.tnl,.ehi,.ehil,.creeb,.dark,.dark.backup,.json,.txt,.conf"
             onChange={handleFileUpload}
             className="hidden"
             style={{ display: 'none' }}
@@ -754,7 +829,7 @@ export default function ConfigInspectorPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
             <span>Import Config File</span>
-            <span className="hidden lg:inline text-[10px] text-cyan-300 font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700/60">.twt / .creeb / .npvs / .hc / .tnl / .ehi</span>
+            <span className="hidden lg:inline text-[10px] text-cyan-300 font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700/60">.twt / .dark / .creeb / .npvs / .hc / .tnl</span>
           </button>
         </div>
       </header>
@@ -945,7 +1020,7 @@ export default function ConfigInspectorPage() {
               setInput(e.target.value);
               if (importedFileInfo) setImportedFileInfo(null);
             }}
-            placeholder="Paste Cloud Config UUID, CREEBINJ token, share URL (vless://, vmess://, ssc://), or drag & drop a config file (.twt, .creeb, .hc, .npvs, .tnl, .ehi)..."
+            placeholder="Paste Cloud Config UUID, CREEBINJ token, Dark Tunnel URI (darktunnel://), share URL (vless://, vmess://, ssc://), or drag & drop a config file (.dark, .twt, .creeb, .hc, .npvs, .tnl, .ehi)..."
             className="w-full rounded-xl bg-slate-950/90 border border-slate-700/80 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 focus:outline-none px-3.5 sm:px-4 py-2.5 text-xs sm:text-sm text-slate-100 font-mono placeholder-slate-500 resize-y min-h-[80px] leading-relaxed transition"
           />
         </div>
@@ -1358,6 +1433,7 @@ export default function ConfigInspectorPage() {
                 ...(cd.npvsContainer ? [{ id: 'npvs', label: 'NPV Tunnel (.npvs)', active: true }] : []),
                 ...(cd.sscContainer ? [{ id: 'ssc', label: 'SSH Custom (Ssc://)', active: true }] : []),
                 ...(cd.httpWeakContainer ? [{ id: 'httpweak', label: 'HTTP Weak / Tweak (.ht)', active: true }] : []),
+                ...(cd.darkTunnelContainer ? [{ id: 'darktunnel', label: 'Dark Tunnel (.dark)', active: true }] : []),
                 ...(cd.creebContainer ? [{ id: 'creeb', label: 'Creeb Injector (CREEBINJ)', active: true }] : []),
                 { id: 'v2ray', label: 'V2Ray / Xray Core', active: cd.v2ray.present },
                 { id: 'dnstt', label: 'SlowDNS (DNSTT)', active: cd.slowDns.present },
@@ -2813,6 +2889,361 @@ export default function ConfigInspectorPage() {
                         Run Live Verification Probe for {cd.httpWeakContainer.profileName}
                       </button>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================== DARK TUNNEL (.DARK / DARKTUNNEL://) MULTI-PROTOCOL INSPECTOR CARD ==================== */}
+              {showDarkTunnelCard && cd.darkTunnelContainer && (
+                <div className="bg-slate-900/80 border border-purple-500/40 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl shadow-purple-950/20">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-2.5">
+                    <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full bg-purple-400 shrink-0" />
+                      <div className="min-w-0">
+                        <h3 className="text-base font-bold text-white truncate max-w-full flex items-center gap-2 flex-wrap">
+                          <span>Dark Tunnel Multi-Protocol Inspector</span>
+                          <span className="text-xs font-normal text-purple-300 font-mono">
+                            ({cd.darkTunnelContainer.profileName})
+                          </span>
+                        </h3>
+                        <div className="text-[11px] font-mono text-slate-400">
+                          {cd.darkTunnelContainer.packageName} • v{cd.darkTunnelContainer.versionName} (Build {cd.darkTunnelContainer.versionCode}) • <code className="text-purple-300/90">{cd.darkTunnelContainer.wireFormat}</code>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30 whitespace-nowrap uppercase">
+                        Primary: {cd.darkTunnelContainer.tunnelTypeName}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          cd.darkTunnelContainer.isClosed
+                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                            : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                        }`}
+                      >
+                        {cd.darkTunnelContainer.isClosed ? 'Closed / Protected' : 'Open / Unclosed'}
+                      </span>
+                      {cd.darkTunnelContainer.isPasswordProtected && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                          Password Protected
+                        </span>
+                      )}
+                      {cd.darkTunnelContainer.isHwidLocked && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                          {cd.darkTunnelContainer.hwidList.length} HWID Locked
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Security / Provider Lock Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+                    <div>
+                      <span className="text-[10px] uppercase text-slate-400 tracking-wider">Container State</span>
+                      <div className={`font-mono font-bold mt-0.5 truncate ${cd.darkTunnelContainer.isClosed ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {cd.darkTunnelContainer.isClosed ? 'Closed Config' : 'Open Config'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase text-slate-400 tracking-wider">Root Lock</span>
+                      <div className={`font-mono font-bold mt-0.5 truncate ${cd.darkTunnelContainer.blockRoot ? 'text-rose-400' : 'text-slate-400'}`}>
+                        {cd.darkTunnelContainer.blockRoot ? 'Block Root' : 'Allowed'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase text-slate-400 tracking-wider">PlayStore Lock</span>
+                      <div className={`font-mono font-bold mt-0.5 truncate ${cd.darkTunnelContainer.blockPlayStore ? 'text-amber-400' : 'text-slate-400'}`}>
+                        {cd.darkTunnelContainer.blockPlayStore ? 'Enforced' : 'Unlocked'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase text-slate-400 tracking-wider">Password Guard</span>
+                      <div className={`font-mono font-bold mt-0.5 truncate ${cd.darkTunnelContainer.isPasswordProtected ? 'text-purple-400' : 'text-slate-400'}`}>
+                        {cd.darkTunnelContainer.isPasswordProtected ? 'Protected' : 'No Password'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase text-slate-400 tracking-wider">HWID Protection</span>
+                      <div className={`font-mono font-bold mt-0.5 truncate ${cd.darkTunnelContainer.isHwidLocked ? 'text-sky-400' : 'text-slate-400'}`}>
+                        {cd.darkTunnelContainer.isHwidLocked ? `${cd.darkTunnelContainer.hwidList.length} Device(s)` : 'None'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase text-slate-400 tracking-wider">Validity / Expiry</span>
+                      <div className={`font-mono font-bold mt-0.5 truncate ${cd.darkTunnelContainer.isExpired ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        {cd.darkTunnelContainer.isExpired ? 'Expired' : (cd.darkTunnelContainer.expireAt ? 'Valid' : 'Unlimited')}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Notes / Banner Messages */}
+                  {(cd.darkTunnelContainer.message || cd.darkTunnelContainer.connectedMessage) && (
+                    <div className="p-3 bg-purple-950/20 border border-purple-800/40 rounded-xl space-y-1.5 text-xs">
+                      {cd.darkTunnelContainer.message && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider shrink-0 mt-0.5">Author Note:</span>
+                          <span className="font-mono text-purple-200 break-words">{cd.darkTunnelContainer.message}</span>
+                        </div>
+                      )}
+                      {cd.darkTunnelContainer.connectedMessage && (
+                        <div className="flex items-start gap-2">
+                          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider shrink-0 mt-0.5">Connected Banner:</span>
+                          <span className="font-mono text-emerald-200 break-words">{cd.darkTunnelContainer.connectedMessage}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Extracted Protocol Data */}
+                  <div className="space-y-3">
+                    {/* SSH Protocol Card */}
+                    {cd.darkTunnelContainer.protocols.ssh && (
+                      <div className="p-3.5 bg-slate-950/80 border border-cyan-800/40 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                            <span className="text-xs font-bold text-cyan-300 uppercase tracking-wider">SSH Core (libssh)</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyText('darkSsh', `${cd.darkTunnelContainer!.protocols.ssh!.host}:${cd.darkTunnelContainer!.protocols.ssh!.port}@${cd.darkTunnelContainer!.protocols.ssh!.username}:${cd.darkTunnelContainer!.protocols.ssh!.password || ''}`)}
+                            className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                          >
+                            {copiedKey === 'darkSsh' ? 'Copied SSH!' : 'Copy SSH Host:User'}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Host & Port</span>
+                            <span className="font-mono text-white font-semibold">{cd.darkTunnelContainer.protocols.ssh.host}:{cd.darkTunnelContainer.protocols.ssh.port}</span>
+                          </div>
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Username</span>
+                            <span className="font-mono text-cyan-200">{cd.darkTunnelContainer.protocols.ssh.username || 'Not configured'}</span>
+                          </div>
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Password</span>
+                            <span className="font-mono text-cyan-200">{cd.darkTunnelContainer.protocols.ssh.password ? '••••••••' : 'None / Key'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SlowDNS / DNSTT Protocol Card */}
+                    {cd.darkTunnelContainer.protocols.dnstt && (
+                      <div className="p-3.5 bg-slate-950/80 border border-amber-800/40 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-amber-400" />
+                            <span className="text-xs font-bold text-amber-300 uppercase tracking-wider">SlowDNS (DNSTT / Turbotunnel)</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyText('darkDnstt', `${cd.darkTunnelContainer!.protocols.dnstt!.nameserver} | ${cd.darkTunnelContainer!.protocols.dnstt!.pubkey}`)}
+                            className="text-[11px] font-mono text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                          >
+                            {copiedKey === 'darkDnstt' ? 'Copied DNSTT!' : 'Copy NS & PubKey'}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Nameserver Domain</span>
+                            <span className="font-mono text-amber-200 font-semibold">{cd.darkTunnelContainer.protocols.dnstt.nameserver || 'None'}</span>
+                          </div>
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Public Key (Curve25519)</span>
+                            <span className="font-mono text-amber-200 break-all">{cd.darkTunnelContainer.protocols.dnstt.pubkey || 'None'}</span>
+                          </div>
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800 sm:col-span-2">
+                            <span className="text-[10px] text-slate-400 block">UDP DNS Resolver & Port</span>
+                            <span className="font-mono text-slate-300">{cd.darkTunnelContainer.protocols.dnstt.dnsResolver}:{cd.darkTunnelContainer.protocols.dnstt.dnsPort}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HTTP Inject / Proxy & Payload Card */}
+                    {cd.darkTunnelContainer.protocols.inject && (
+                      <div className="p-3.5 bg-slate-950/80 border border-emerald-800/40 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                            <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">
+                              HTTP Inject / Proxy ({cd.darkTunnelContainer.protocols.inject.mode})
+                            </span>
+                          </div>
+                          {cd.darkTunnelContainer.protocols.inject.payload && (
+                            <button
+                              type="button"
+                              onClick={() => copyText('darkPayload', cd.darkTunnelContainer!.protocols.inject!.payload)}
+                              className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
+                            >
+                              {copiedKey === 'darkPayload' ? 'Copied Payload!' : 'Copy Payload Template'}
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">SNI Host</span>
+                            <span className="font-mono text-emerald-200">{cd.darkTunnelContainer.protocols.inject.sni || 'Direct (No SNI)'}</span>
+                          </div>
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Remote Proxy</span>
+                            <span className="font-mono text-emerald-200">
+                              {cd.darkTunnelContainer.protocols.inject.proxyHost ? `${cd.darkTunnelContainer.protocols.inject.proxyHost}:${cd.darkTunnelContainer.protocols.inject.proxyPort}` : 'Direct'}
+                            </span>
+                          </div>
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Enhanced Payload</span>
+                            <span className="font-mono text-emerald-200">{cd.darkTunnelContainer.protocols.inject.payloadEnhanced ? 'Active' : 'Standard'}</span>
+                          </div>
+                        </div>
+                        {cd.darkTunnelContainer.protocols.inject.payload && (
+                          <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block mb-1">Payload String</span>
+                            <pre className="text-[11px] font-mono text-emerald-300 whitespace-pre-wrap break-all bg-black/40 p-2 rounded max-h-28 overflow-y-auto">
+                              {cd.darkTunnelContainer.protocols.inject.payload}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* V2Ray / Xray Protocol Card */}
+                    {cd.darkTunnelContainer.protocols.v2ray && (
+                      <div className="p-3.5 bg-slate-950/80 border border-indigo-800/40 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                            <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider">
+                              V2Ray Core ({cd.darkTunnelContainer.protocols.v2ray.protocol.toUpperCase()})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyText('darkV2ray', `${cd.darkTunnelContainer!.protocols.v2ray!.host}:${cd.darkTunnelContainer!.protocols.v2ray!.port}#${cd.darkTunnelContainer!.protocols.v2ray!.uuid}`)}
+                            className="text-[11px] font-mono text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                          >
+                            {copiedKey === 'darkV2ray' ? 'Copied V2Ray!' : 'Copy V2Ray Host:UUID'}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Target Server</span>
+                            <span className="font-mono text-indigo-200 font-semibold">{cd.darkTunnelContainer.protocols.v2ray.host}:{cd.darkTunnelContainer.protocols.v2ray.port}</span>
+                          </div>
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">UUID / User ID</span>
+                            <span className="font-mono text-indigo-200 break-all">{cd.darkTunnelContainer.protocols.v2ray.uuid || 'None'}</span>
+                          </div>
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Transport & Security</span>
+                            <span className="font-mono text-indigo-200">{cd.darkTunnelContainer.protocols.v2ray.transport} + {cd.darkTunnelContainer.protocols.v2ray.tls ? 'TLS' : 'Plain'}</span>
+                          </div>
+                          {cd.darkTunnelContainer.protocols.v2ray.wsPath && (
+                            <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800 sm:col-span-2">
+                              <span className="text-[10px] text-slate-400 block">WebSocket Path & Host</span>
+                              <span className="font-mono text-indigo-200">{cd.darkTunnelContainer.protocols.v2ray.wsPath} ({cd.darkTunnelContainer.protocols.v2ray.wsHost || 'Default'})</span>
+                            </div>
+                          )}
+                          {cd.darkTunnelContainer.protocols.v2ray.sni && (
+                            <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                              <span className="text-[10px] text-slate-400 block">Server Name Indication (SNI)</span>
+                              <span className="font-mono text-indigo-200">{cd.darkTunnelContainer.protocols.v2ray.sni}</span>
+                            </div>
+                          )}
+                        </div>
+                        {cd.darkTunnelContainer.protocols.v2ray.customConfigJson && (
+                          <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block mb-1">Custom V2Ray Configuration JSON</span>
+                            <pre className="text-[11px] font-mono text-indigo-300 whitespace-pre-wrap break-all bg-black/40 p-2 rounded max-h-32 overflow-y-auto">
+                              {cd.darkTunnelContainer.protocols.v2ray.customConfigJson}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* OpenVPN Core Card */}
+                    {cd.darkTunnelContainer.protocols.openvpn && (
+                      <div className="p-3.5 bg-slate-950/80 border border-teal-800/40 rounded-xl space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-teal-400" />
+                          <span className="text-xs font-bold text-teal-300 uppercase tracking-wider">OpenVPN Core</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Server Host & Port</span>
+                            <span className="font-mono text-teal-200 font-semibold">{cd.darkTunnelContainer.protocols.openvpn.host}:{cd.darkTunnelContainer.protocols.openvpn.port}</span>
+                          </div>
+                          <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">User Credentials</span>
+                            <span className="font-mono text-teal-200">{cd.darkTunnelContainer.protocols.openvpn.username} : {cd.darkTunnelContainer.protocols.openvpn.password ? '••••••' : 'None'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dark Tunnel Cloud & Telegram Updates */}
+                  <div className="p-3.5 bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-slate-950/40 border border-purple-800/40 rounded-xl text-xs space-y-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-purple-400 font-bold">☁️ Dark Tunnel Cloud System</span>
+                        <span className="text-[10px] text-slate-400 font-mono">Telegram Official Channels & Config Updates</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={cd.darkTunnelContainer.cloud.channelUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 text-[11px] font-semibold transition"
+                        >
+                          Channel @darktunnel_app
+                        </a>
+                        <a
+                          href={cd.darkTunnelContainer.cloud.groupUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-[11px] font-semibold transition"
+                        >
+                          Group @darktunnel_app_group
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Raw Dark Tunnel JSON */}
+                  {cd.darkTunnelContainer.rawJson && (
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                          Full Dark Tunnel JSON Inspection
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyText('darkRawJson', cd.darkTunnelContainer?.rawJson || '')}
+                          className="text-[11px] font-mono text-purple-400 hover:text-purple-300 underline cursor-pointer"
+                        >
+                          {copiedKey === 'darkRawJson' ? 'Copied JSON!' : 'Copy Dark Tunnel JSON'}
+                        </button>
+                      </div>
+                      <pre className="text-[11px] font-mono text-slate-300 whitespace-pre-wrap break-all bg-slate-950 p-3 rounded-xl border border-slate-800 max-h-48 overflow-y-auto">
+                        {cd.darkTunnelContainer.rawJson}
+                      </pre>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => handleInspect()}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs cursor-pointer hover:opacity-90 transition shadow-md shadow-purple-500/20"
+                    >
+                      Run Live Verification Probe for {cd.darkTunnelContainer.profileName}
+                    </button>
                   </div>
                 </div>
               )}

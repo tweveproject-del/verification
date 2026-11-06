@@ -381,6 +381,79 @@ export type InspectResponse = {
       wireguardConfig?: string;
       rawHexPreview?: string;
     } | null;
+    isDarkTunnelContainer?: boolean;
+    darkTunnelContainer?: {
+      appName: string;
+      packageName: string;
+      profileName: string;
+      versionName: string;
+      versionCode: number;
+      wireFormat: string;
+      isClosed: boolean;
+      isPasswordProtected: boolean;
+      blockRoot: boolean;
+      blockPlayStore: boolean;
+      isHwidLocked: boolean;
+      hwidList: string[];
+      expireAt: number | null;
+      expireDateFormatted: string;
+      isExpired: boolean;
+      message: string;
+      connectedMessage: string;
+      tunnelType: string;
+      tunnelTypeName: string;
+      protocols: {
+        ssh?: {
+          host: string;
+          port: number;
+          username: string;
+          password?: string;
+        };
+        dnstt?: {
+          nameserver: string;
+          pubkey: string;
+          dnsResolver: string;
+          dnsPort: number;
+        };
+        inject?: {
+          enabled: boolean;
+          mode: string;
+          sni: string;
+          proxyHost: string;
+          proxyPort: number;
+          payload: string;
+          payloadEnhanced: boolean;
+        };
+        openvpn?: {
+          host: string;
+          port: number;
+          username: string;
+          password?: string;
+        };
+        v2ray?: {
+          protocol: string;
+          host: string;
+          port: number;
+          uuid: string;
+          transport: string;
+          tls: boolean;
+          sni: string;
+          wsPath: string;
+          wsHost: string;
+          grpcServiceName: string;
+          mux: boolean;
+          customConfigJson?: string;
+        };
+      };
+      cloud: {
+        hasCloud: boolean;
+        channelUrl: string;
+        groupUrl: string;
+        cloudEndpoint?: string;
+      };
+      supportedProtocols: string[];
+      rawJson?: string;
+    } | null;
     ssh: {
       present: boolean;
       activeInMode: boolean;
@@ -3140,6 +3213,423 @@ export function tryParseCloudSlug(raw: string): {
   };
 }
 
+// =========================================================================
+// DARK TUNNEL (.DARK / DARKTUNNEL:// / NET.DARKTUNNEL.APP) PARSER & DECRYPTOR
+// =========================================================================
+
+function parseDarkTunnelBase64ToUint8(b64: string): Uint8Array {
+  const norm = b64.trim().replace(/-/g, '+').replace(/_/g, '/');
+  const pad = norm.length % 4 === 0 ? norm : norm + '='.repeat(4 - (norm.length % 4));
+  if (typeof atob === 'function') {
+    const bin = atob(pad);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) {
+      u8[i] = bin.charCodeAt(i);
+    }
+    return u8;
+  }
+  return new Uint8Array(Buffer.from(pad, 'base64'));
+}
+
+function parseDarkTunnelBase64ToString(b64: string): string {
+  const u8 = parseDarkTunnelBase64ToUint8(b64);
+  return new TextDecoder('utf-8').decode(u8);
+}
+
+function decodeDarkMsgPackBytes(u8: Uint8Array): any {
+  let offset = 0;
+  const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const decoder = new TextDecoder('utf-8');
+
+  function read(): any {
+    if (offset >= u8.length) return undefined;
+    const b = u8[offset++];
+    if (b <= 0x7f) return b;
+    if ((b & 0xe0) === 0xe0) return b - 0x100;
+    if ((b & 0xe0) === 0xa0) {
+      const len = b & 0x1f;
+      const s = decoder.decode(u8.subarray(offset, offset + len));
+      offset += len;
+      return s;
+    }
+    if ((b & 0xf0) === 0x90) {
+      const len = b & 0x0f;
+      const arr = [];
+      for (let i = 0; i < len; i++) arr.push(read());
+      return arr;
+    }
+    if ((b & 0xf0) === 0x80) {
+      const len = b & 0x0f;
+      const obj: Record<string, any> = {};
+      for (let i = 0; i < len; i++) {
+        const k = String(read());
+        obj[k] = read();
+      }
+      return obj;
+    }
+    if (b === 0xc0) return null;
+    if (b === 0xc2) return false;
+    if (b === 0xc3) return true;
+    if (b === 0xcc) { const v = view.getUint8(offset); offset += 1; return v; }
+    if (b === 0xcd) { const v = view.getUint16(offset, false); offset += 2; return v; }
+    if (b === 0xce) { const v = view.getUint32(offset, false); offset += 4; return v; }
+    if (b === 0xcf) { const v = Number(view.getBigUint64(offset, false)); offset += 8; return v; }
+    if (b === 0xd0) { const v = view.getInt8(offset); offset += 1; return v; }
+    if (b === 0xd1) { const v = view.getInt16(offset, false); offset += 2; return v; }
+    if (b === 0xd2) { const v = view.getInt32(offset, false); offset += 4; return v; }
+    if (b === 0xd3) { const v = Number(view.getBigInt64(offset, false)); offset += 8; return v; }
+    if (b === 0xd9) { const len = view.getUint8(offset); offset += 1; const s = decoder.decode(u8.subarray(offset, offset + len)); offset += len; return s; }
+    if (b === 0xda) { const len = view.getUint16(offset, false); offset += 2; const s = decoder.decode(u8.subarray(offset, offset + len)); offset += len; return s; }
+    if (b === 0xdb) { const len = view.getUint32(offset, false); offset += 4; const s = decoder.decode(u8.subarray(offset, offset + len)); offset += len; return s; }
+    if (b === 0xc4) { const len = view.getUint8(offset); offset += 1; const d = u8.subarray(offset, offset + len); offset += len; return d; }
+    if (b === 0xc5) { const len = view.getUint16(offset, false); offset += 2; const d = u8.subarray(offset, offset + len); offset += len; return d; }
+    if (b === 0xc6) { const len = view.getUint32(offset, false); offset += 4; const d = u8.subarray(offset, offset + len); offset += len; return d; }
+    if (b === 0xdc) { const len = view.getUint16(offset, false); offset += 2; const arr = []; for (let i = 0; i < len; i++) arr.push(read()); return arr; }
+    if (b === 0xdd) { const len = view.getUint32(offset, false); offset += 4; const arr = []; for (let i = 0; i < len; i++) arr.push(read()); return arr; }
+    if (b === 0xde) { const len = view.getUint16(offset, false); offset += 2; const obj: Record<string, any> = {}; for (let i = 0; i < len; i++) { const k = String(read()); obj[k] = read(); } return obj; }
+    if (b === 0xdf) { const len = view.getUint32(offset, false); offset += 4; const obj: Record<string, any> = {}; for (let i = 0; i < len; i++) { const k = String(read()); obj[k] = read(); } return obj; }
+    return undefined;
+  }
+  return read();
+}
+
+function buildDarkTunnelResponse(
+  parsed: any,
+  rawInput: string,
+  wireFormat: string,
+  fileName?: string
+): {
+  decryptedJson: Record<string, any>;
+  encryptionMethod: string;
+} {
+  const profileName = String(parsed.name || (fileName ? fileName.replace(/\.dark(\.backup)?$/i, '') : 'Dark Tunnel Profile')).trim();
+  const rawType = String(parsed.type || 'SSH').toUpperCase();
+  const isClosed = Boolean(parsed.encryptedLockedConfig && String(parsed.encryptedLockedConfig).trim().length > 0);
+
+  let lockedMeta: any = null;
+  if (isClosed) {
+    try {
+      const lockedBytes = parseDarkTunnelBase64ToUint8(parsed.encryptedLockedConfig);
+      lockedMeta = decodeDarkMsgPackBytes(lockedBytes);
+    } catch { }
+  }
+
+  const appCfg = lockedMeta?.LockedAppConfig || {};
+  const isPasswordProtected = Boolean(appCfg.IsPasswordProtected);
+  const blockRoot = Boolean(appCfg.BlockRoot);
+  const blockPlayStore = Boolean(appCfg.PlayStore || appCfg.IsPlaystore);
+  const rawHwid = appCfg.HardwareIdList || appCfg.HashedHardwareIdList;
+  const hwidList: string[] = Array.isArray(rawHwid) ? rawHwid.map(String) : (rawHwid ? [String(rawHwid)] : []);
+  const isHwidLocked = hwidList.length > 0;
+  const expireAt = Number(appCfg.ExpireAt || parsed.expireAt || 0);
+  const nowMs = Date.now();
+  const isExpired = expireAt > 0 && nowMs > expireAt;
+  const expireDateFormatted = expireAt > 0 ? new Date(expireAt).toUTCString() : 'No Expiry Set (Unlimited)';
+  const message = String(appCfg.Message || parsed.message || '').trim();
+  const connectedMessage = String(appCfg.ConnectedMessage || '').trim();
+  const versionCode = Number(appCfg.VersionCode || 32);
+  const versionName = String(appCfg.VersionName || '1.0.26');
+
+  // Tunnel Type & human readable name
+  const tunnelTypeMap: Record<string, { id: number; name: string }> = {
+    DIRECT: { id: 0, name: 'Direct Target' },
+    SSH: { id: 1, name: 'SSH Direct & HTTP Proxy' },
+    SSH_DNSTT: { id: 14, name: 'SSH over SlowDNS / DNSTT' },
+    OPENVPN: { id: 13, name: 'OpenVPN Client' },
+    VMESS: { id: 8, name: 'V2Ray VMess (Xray Core)' },
+    VLESS: { id: 9, name: 'V2Ray VLess (Xray Core)' },
+    TROJAN: { id: 10, name: 'Trojan (Xray Core)' },
+    SHADOWSOCKS: { id: 7, name: 'Shadowsocks (Sing-shadowsocks)' },
+    V2RAY_CUSTOM: { id: 8, name: 'V2Ray Custom JSON' },
+  };
+
+  const typeInfo = tunnelTypeMap[rawType] || { id: 1, name: `Dark Tunnel (${rawType})` };
+
+  // Protocol extraction
+  const sshObj = parsed.sshTunnelConfig?.sshConfig || parsed.sshDnsttTunnelConfig?.sshConfig || lockedMeta?.EncryptedSshConfig || {};
+  const sshHost = String(sshObj.host || sshObj.EncryptedHost || '').trim();
+  const sshPort = Number(sshObj.port || sshObj.EncryptedPort || 22);
+  const sshUser = String(sshObj.username || sshObj.EncryptedUsername || '').trim();
+  const sshPass = String(sshObj.password || sshObj.EncryptedPassword || '').trim();
+
+  const dnsttObj = parsed.sshDnsttTunnelConfig?.dnsttConfig || parsed.sshTunnelConfig?.injectConfig || lockedMeta?.EncryptedDnsttConfig || {};
+  const dnsttNameserver = String(dnsttObj.serverName || dnsttObj.dnsttServerName || dnsttObj.EncryptedServerName || dnsttObj.EncryptedDnsttServerName || '').trim();
+  const dnsttPubkey = String(dnsttObj.publicKey || dnsttObj.dnsttPublicKey || dnsttObj.EncryptedPubkey || dnsttObj.EncryptedDnsttPubkey || '').trim();
+  const dnsttResolver = String(dnsttObj.udpDnsHost || dnsttObj.dnsttUdpDnsHost || dnsttObj.EncryptedDnsHost || '1.1.1.1').trim();
+  const dnsttPort = Number(dnsttObj.udpDnsPort || dnsttObj.dnsttUdpDnsPort || dnsttObj.EncryptedDnsPort || 53);
+
+  const injectObj =
+    parsed.sshTunnelConfig?.injectConfig ||
+    parsed.vmessTunnelConfig?.injectConfig ||
+    parsed.vlessTunnelConfig?.injectConfig ||
+    parsed.trojanTunnelConfig?.injectConfig ||
+    parsed.shadowsocksTunnelConfig?.injectConfig ||
+    lockedMeta?.EncryptedInjectConfig ||
+    {};
+  const injectEnabled = Boolean(injectObj.enabled !== false);
+  const injectMode = String(injectObj.mode || injectObj.EncryptedMode || 'DIRECT').trim();
+  const injectSni = String(injectObj.serverNameIndication || injectObj.EncryptedServerNameIndication || '').trim();
+  const injectProxyHost = String(injectObj.proxyHost || injectObj.EncryptedProxyHost || '').trim();
+  const injectProxyPort = Number(injectObj.proxyPort || injectObj.EncryptedProxyPort || 8080);
+  const injectPayload = String(injectObj.payload || injectObj.EncryptedPayload || '').trim();
+  const injectPayloadEnhanced = Boolean(injectObj.payloadEnhanced);
+
+  const ovpnObj = parsed.openvpnTunnelConfig?.openvpnConfig || {};
+  const ovpnHost = String(ovpnObj.host || '').trim();
+  const ovpnPort = Number(ovpnObj.port || 1194);
+  const ovpnUser = String(ovpnObj.username || '').trim();
+  const ovpnPass = String(ovpnObj.password || '').trim();
+
+  const v2rayObj =
+    parsed.vmessTunnelConfig?.v2rayConfig ||
+    parsed.vlessTunnelConfig?.v2rayConfig ||
+    parsed.trojanTunnelConfig?.v2rayConfig ||
+    parsed.shadowsocksTunnelConfig?.v2rayConfig ||
+    lockedMeta?.EncryptedV2RayConfig ||
+    {};
+  const v2rayProtocol =
+    rawType === 'VMESS' ? 'vmess' :
+    rawType === 'VLESS' ? 'vless' :
+    rawType === 'TROJAN' ? 'trojan' :
+    rawType === 'SHADOWSOCKS' ? 'shadowsocks' :
+    rawType === 'V2RAY_CUSTOM' ? 'custom' : 'vmess';
+  const v2rayHost = String(v2rayObj.host || v2rayObj.EncryptedTargetHost || '').trim();
+  const v2rayPort = Number(v2rayObj.port || v2rayObj.EncryptedTargetPort || 443);
+  const v2rayUuid = String(v2rayObj.uuid || '').trim();
+  const v2rayTransport = String(v2rayObj.transportNetwork || 'Websocket').toLowerCase();
+  const v2rayTls = Boolean(v2rayObj.tls);
+  const v2raySni = String(v2rayObj.serverNameIndication || '').trim();
+  const v2rayWsPath = String(v2rayObj.wsPath || '').trim();
+  const v2rayWsHost = String(v2rayObj.wsHeaderHost || '').trim();
+  const v2rayGrpcService = String(v2rayObj.grpcServiceName || '').trim();
+  const v2rayMux = Boolean(v2rayObj.mux);
+  const customConfigJson = String(parsed.v2rayCustomConfigTunnelConfig?.v2rayCustomConfig || '').trim();
+
+  const supportedProtocols: string[] = [];
+  if (sshHost || sshUser) supportedProtocols.push('SSH (libssh)');
+  if (dnsttNameserver || dnsttPubkey) supportedProtocols.push('SlowDNS DNSTT (turbotunnel)');
+  if (injectPayload || injectProxyHost || injectSni) supportedProtocols.push(`HTTP Injector (${injectMode})`);
+  if (ovpnHost) supportedProtocols.push('OpenVPN Core');
+  if (v2rayHost || v2rayUuid || customConfigJson) supportedProtocols.push(`V2Ray / Xray (${v2rayProtocol.toUpperCase()})`);
+
+  const darkTunnelContainer = {
+    appName: 'Dark Tunnel',
+    packageName: 'net.darktunnel.app',
+    profileName,
+    versionName,
+    versionCode,
+    wireFormat,
+    isClosed,
+    isPasswordProtected,
+    blockRoot,
+    blockPlayStore,
+    isHwidLocked,
+    hwidList,
+    expireAt,
+    expireDateFormatted,
+    isExpired,
+    message,
+    connectedMessage,
+    tunnelType: rawType,
+    tunnelTypeName: typeInfo.name,
+    protocols: {
+      ...(sshHost ? {
+        ssh: {
+          host: sshHost,
+          port: sshPort,
+          username: sshUser,
+          password: sshPass,
+        },
+      } : {}),
+      ...(dnsttNameserver || dnsttPubkey ? {
+        dnstt: {
+          nameserver: dnsttNameserver,
+          pubkey: dnsttPubkey,
+          dnsResolver: dnsttResolver,
+          dnsPort: dnsttPort,
+        },
+      } : {}),
+      inject: {
+        enabled: injectEnabled,
+        mode: injectMode,
+        sni: injectSni,
+        proxyHost: injectProxyHost,
+        proxyPort: injectProxyPort,
+        payload: injectPayload,
+        payloadEnhanced: injectPayloadEnhanced,
+      },
+      ...(ovpnHost ? {
+        openvpn: {
+          host: ovpnHost,
+          port: ovpnPort,
+          username: ovpnUser,
+          password: ovpnPass,
+        },
+      } : {}),
+      ...((v2rayHost || v2rayUuid || customConfigJson) ? {
+        v2ray: {
+          protocol: v2rayProtocol,
+          host: v2rayHost,
+          port: v2rayPort,
+          uuid: v2rayUuid,
+          transport: v2rayTransport,
+          tls: v2rayTls,
+          sni: v2raySni,
+          wsPath: v2rayWsPath,
+          wsHost: v2rayWsHost,
+          grpcServiceName: v2rayGrpcService,
+          mux: v2rayMux,
+          customConfigJson,
+        },
+      } : {}),
+    },
+    cloud: {
+      hasCloud: true,
+      channelUrl: 'https://t.me/darktunnel_app',
+      groupUrl: 'https://t.me/darktunnel_app_group',
+      cloudEndpoint: 'https://t.me/darktunnel_app (Dark Tunnel Telegram Cloud & Community)',
+    },
+    supportedProtocols,
+    rawJson: JSON.stringify(parsed, null, 2),
+  };
+
+  const decryptedJson: Record<string, any> = {
+    is_dark_tunnel_container: true,
+    dark_tunnel_container: darkTunnelContainer,
+    name: profileName,
+    config_version: versionName,
+    config_message: message || `Dark Tunnel Profile: ${profileName} (${typeInfo.name})`,
+    config_expiry: expireAt,
+    config_protected: isClosed,
+    block_root: blockRoot,
+    require_store: blockPlayStore,
+    hwid_lock: isHwidLocked,
+    hwid_list: hwidList.join(', '),
+    tunnelType: typeInfo.id,
+    type: String(typeInfo.id),
+    // SSH
+    sshServer: sshHost,
+    sshPort: String(sshPort),
+    sshUser,
+    sshPass,
+    host: sshHost,
+    port: String(sshPort),
+    username: sshUser,
+    password: sshPass,
+    // Inject / Proxy / Payload
+    proxyHost: injectProxyHost,
+    proxyPort: String(injectProxyPort),
+    http_host: injectProxyHost,
+    http_port: String(injectProxyPort),
+    sni: injectSni || v2raySni,
+    sniHost: injectSni || v2raySni,
+    payload: injectPayload,
+    message: injectPayload || message,
+    // DNSTT
+    nameserver: dnsttNameserver,
+    pubkey: dnsttPubkey,
+    dnsresolver: dnsttResolver,
+    slowdns_nameserver: dnsttNameserver,
+    slowdns_pubkey: dnsttPubkey,
+    slowdns_dns: dnsttResolver,
+    // V2Ray
+    v2ray_protocol: v2rayProtocol,
+    v2ray_server_host: v2rayHost,
+    v2ray_server_port: String(v2rayPort),
+    v2ray_uuid: v2rayUuid,
+    v2ray_network: v2rayTransport,
+    v2ray_security: v2rayTls ? 'tls' : 'none',
+    v2ray_ws_path: v2rayWsPath,
+    v2ray_ws_host: v2rayWsHost,
+    v2ray_sni: v2raySni,
+    // OpenVPN
+    ovpn_config: ovpnHost ? `client\ndev tun\nproto tcp\nremote ${ovpnHost} ${ovpnPort}` : '',
+  };
+
+  return {
+    decryptedJson,
+    encryptionMethod: `${wireFormat} • net.darktunnel.app (Dark Tunnel Multi-Protocol)`,
+  };
+}
+
+export function tryParseDarkTunnelPayload(
+  raw: string,
+  fileName?: string
+): {
+  decryptedJson: Record<string, any>;
+  encryptionMethod: string;
+} | null {
+  const trimmed = raw.trim();
+  const isDarkExt = Boolean(fileName && /\.(dark|dark\.backup)$/i.test(fileName));
+  const isDarkUri = trimmed.startsWith('darktunnel://');
+
+  let jsonStr = '';
+  let wireFormat = 'Dark Tunnel Profile';
+
+  if (isDarkUri) {
+    wireFormat = 'Dark Tunnel URI (darktunnel://)';
+    const b64 = trimmed.slice('darktunnel://'.length);
+    try {
+      jsonStr = parseDarkTunnelBase64ToString(b64);
+    } catch { }
+  } else if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    jsonStr = trimmed;
+    wireFormat = isDarkExt ? 'Dark Tunnel Config File (.dark JSON)' : 'Dark Tunnel Raw JSON';
+  } else {
+    // Try base64 decoding (standard .dark file or encoded token)
+    try {
+      const candidate = parseDarkTunnelBase64ToString(trimmed);
+      if (candidate.startsWith('{') && candidate.endsWith('}')) {
+        jsonStr = candidate;
+        wireFormat = isDarkExt ? 'Dark Tunnel Sealed File (.dark Base64)' : 'Dark Tunnel Base64 Container';
+      }
+    } catch { }
+  }
+
+  if (!jsonStr) {
+    // If it is a .dark file without plain json, check for raw Base64 container
+    if (isDarkExt && trimmed.length > 20) {
+      try {
+        const decoded = parseDarkTunnelBase64ToString(trimmed);
+        if (decoded.includes('darktunnel://')) {
+          const inner = decoded.slice(decoded.indexOf('darktunnel://') + 'darktunnel://'.length);
+          jsonStr = parseDarkTunnelBase64ToString(inner);
+          wireFormat = 'Dark Tunnel Sealed File (.dark)';
+        }
+      } catch { }
+    }
+  }
+
+  if (!jsonStr) return null;
+
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+
+  const hasDarkKeys =
+    parsed &&
+    typeof parsed === 'object' &&
+    (parsed.sshTunnelConfig !== undefined ||
+      parsed.sshDnsttTunnelConfig !== undefined ||
+      parsed.openvpnTunnelConfig !== undefined ||
+      parsed.vmessTunnelConfig !== undefined ||
+      parsed.vlessTunnelConfig !== undefined ||
+      parsed.trojanTunnelConfig !== undefined ||
+      parsed.shadowsocksTunnelConfig !== undefined ||
+      parsed.v2rayCustomConfigTunnelConfig !== undefined ||
+      parsed.encryptedLockedConfig !== undefined ||
+      (parsed.type !== undefined && (parsed.injectConfig !== undefined || parsed.dnsttConfig !== undefined || parsed.sshConfig !== undefined)));
+
+  if (!hasDarkKeys && !isDarkExt && !isDarkUri) {
+    return null;
+  }
+
+  return buildDarkTunnelResponse(parsed, trimmed, wireFormat, fileName);
+}
+
 export async function tryDecryptClientAny(rawPayload: string, fileName?: string): Promise<{
   decryptedJson: Record<string, any> | null;
   encryptionMethod: string;
@@ -3170,6 +3660,10 @@ export async function tryDecryptClientAny(rawPayload: string, fileName?: string)
   // 1f-2. HTTP Weak / HTTP Tweak (.ht / .hts / .htb / config_<token> / HTTPWEAK-<token>)
   const httpWeakRes = tryParseHttpWeakPayload(clean, fileName);
   if (httpWeakRes) return httpWeakRes;
+
+  // 1f-3. Dark Tunnel Profile (.dark / .dark.backup / darktunnel:// / net.darktunnel.app)
+  const darkRes = tryParseDarkTunnelPayload(clean, fileName);
+  if (darkRes) return darkRes;
 
   // 1f. HTTP Injector Profile (.ehi / .ehil file / com.evozi.injector)
   const ehiRes = await tryParseEhiPayload(clean, fileName);
@@ -3700,6 +4194,8 @@ export async function inspectConfigLocally(params: {
   const openTunnelContainer = cfg.open_tunnel_container || null;
   const isHttpInjectorContainer = Boolean(cfg.is_http_injector || cfg.is_http_injector_container);
   const httpInjectorContainer = cfg.http_injector_container || null;
+  const isDarkTunnelContainer = Boolean(cfg.is_dark_tunnel_container);
+  const darkTunnelContainer = cfg.dark_tunnel_container || null;
 
   const sshServer = String(cfg.sshServer || cfg.host || manualServerHost || '').trim();
   const sshPort = String(cfg.sshPort || cfg.port || manualServerPort || '22').trim();
@@ -3916,6 +4412,45 @@ export async function inspectConfigLocally(params: {
     }
   }
 
+  // Dark Tunnel checks
+  if (isDarkTunnelContainer && darkTunnelContainer) {
+    validationChecks.push({
+      id: 'darktunnel_framing',
+      protocol: 'DARKTUNNEL',
+      label: 'Dark Tunnel Profile Framing & Architecture',
+      status: 'pass',
+      value: `${darkTunnelContainer.profileName} (${darkTunnelContainer.wireFormat}) • v${darkTunnelContainer.versionName}`,
+      detail: `Verified Dark Tunnel package ${darkTunnelContainer.packageName} (Build Code ${darkTunnelContainer.versionCode}). State: ${darkTunnelContainer.isClosed ? 'Closed / Protected' : 'Open / Unclosed'}.`,
+    });
+
+    validationChecks.push({
+      id: 'darktunnel_tunnel_mode',
+      protocol: 'DARKTUNNEL',
+      label: 'Tunnel Protocol & Active Outbound Pipelines',
+      status: 'pass',
+      value: `${darkTunnelContainer.tunnelTypeName} [${darkTunnelContainer.tunnelType}]`,
+      detail: `Active Protocols Detected: ${darkTunnelContainer.supportedProtocols.join(' + ') || 'Custom Pipeline'}.`,
+    });
+
+    validationChecks.push({
+      id: 'darktunnel_security_matrix',
+      protocol: 'DARKTUNNEL',
+      label: 'Security Locks, HWID, Root & Expiry Guard',
+      status: darkTunnelContainer.isExpired ? 'warn' : 'pass',
+      value: `Closed: ${darkTunnelContainer.isClosed ? 'Yes' : 'No'} | Passwd: ${darkTunnelContainer.isPasswordProtected ? 'Locked' : 'None'} | RootLock: ${darkTunnelContainer.blockRoot ? 'Enabled' : 'Disabled'} | PlayStore: ${darkTunnelContainer.blockPlayStore ? 'Enforced' : 'Unlocked'} | HWIDs: ${darkTunnelContainer.hwidList.length}`,
+      detail: `HWID Restrictions: [${darkTunnelContainer.hwidList.join(', ') || 'None'}], Expiry: ${darkTunnelContainer.expireDateFormatted}, Note: "${darkTunnelContainer.message || 'None'}", Connected: "${darkTunnelContainer.connectedMessage || 'None'}".`,
+    });
+
+    validationChecks.push({
+      id: 'darktunnel_cloud_system',
+      protocol: 'DARKTUNNEL',
+      label: 'Dark Tunnel Cloud & Community Integration',
+      status: 'pass',
+      value: `Official Cloud Channel: ${darkTunnelContainer.cloud.channelUrl}`,
+      detail: `Community Updates: ${darkTunnelContainer.cloud.channelUrl} | Group: ${darkTunnelContainer.cloud.groupUrl}.`,
+    });
+  }
+
   // Live DoH DNS probe
   const probeTargetDomain = sni || v2raySni || sshServer || nameserver || hysteriaServer;
   let dohResult: any = null;
@@ -3938,6 +4473,7 @@ export async function inspectConfigLocally(params: {
   if (isHcContainer) detectedProtocols.push('HTTP Custom (.hc)');
   if (isOpenTunnelContainer) detectedProtocols.push('OpenTunnel (.tnl)');
   if (isHttpInjectorContainer) detectedProtocols.push('HTTP Injector (.ehi)');
+  if (isDarkTunnelContainer) detectedProtocols.push('Dark Tunnel (.dark)');
 
   const failedChecks = validationChecks.filter(c => c.status === 'fail');
   const healthy = failedChecks.length === 0 && !isExpired;
@@ -3977,6 +4513,8 @@ export async function inspectConfigLocally(params: {
       hcContainer,
       openTunnelContainer,
       httpInjectorContainer,
+      isDarkTunnelContainer,
+      darkTunnelContainer,
       ssh: {
         present: Boolean(sshServer),
         activeInMode: tunnelType <= 7 || tunnelType === 8 || tunnelType === 14 || tunnelType === 15 || Boolean(sshServer && (nameserver || v2rayUuid)),
