@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { inspectConfigLocally } from './inspector-engine';
 
 type ValidationCheck = {
@@ -754,6 +754,16 @@ export default function ConfigInspectorPage() {
     }
   };
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).loadConfigFromAndroid = (content: string, fileName?: string) => {
+        setInput(content);
+        if (fileName) setImportedFileInfo({ name: fileName, size: content.length });
+        handleInspect(content, fileName);
+      };
+    }
+  }, []);
+
   const processImportedFile = (file: File) => {
     setImportedFileInfo({ name: file.name, size: file.size });
     const reader = new FileReader();
@@ -892,19 +902,21 @@ export default function ConfigInspectorPage() {
       {/* Header */}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3.5 border-b border-slate-800/80">
         <div className="flex items-start sm:items-center gap-3">
-          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-cyan-400 via-teal-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
-            <svg width="22" height="22" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-950" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-cyan-400 via-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/25 shrink-0 ring-1 ring-white/20">
+            <svg width="22" height="22" className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.4}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
             </svg>
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-base sm:text-xl font-bold tracking-tight text-white">Tweve Tunnel</h1>
-              <span className="px-2 py-0.5 text-[10px] sm:text-xs font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 whitespace-nowrap">
-                Multi-Protocol Inspector & Verifier
+              <h1 className="text-base sm:text-xl font-extrabold tracking-tight text-white">
+                Tweve Tunnel <span className="text-gradient-cyan">Inspector</span>
+              </h1>
+              <span className="px-2.5 py-0.5 text-[10px] sm:text-xs font-bold rounded-full bg-cyan-500/20 text-cyan-200 border border-cyan-400/40 shadow-sm shadow-cyan-500/20 whitespace-nowrap">
+                Multi-Protocol • Smart Verification
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-slate-400 truncate max-w-xl mt-0.5">
+            <p className="text-[11px] sm:text-xs text-slate-300 font-medium truncate max-w-xl mt-0.5">
               Decrypt, inspect, and live-verify Cloud UUIDs, VPN config files, and multi-protocol tunnels
             </p>
           </div>
@@ -922,13 +934,13 @@ export default function ConfigInspectorPage() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-full sm:w-auto px-3.5 py-2.5 sm:py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 text-xs sm:text-sm font-medium border border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95"
+            className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 text-white text-xs sm:text-sm font-semibold border border-slate-700/80 transition flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95"
           >
             <svg width="15" height="15" className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
             <span>Import Config File</span>
-            <span className="hidden lg:inline text-[10px] text-cyan-300 font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700/60">.twt / .dark / .v2box / .creeb / .npvs / .hat</span>
+            <span className="hidden lg:inline text-[10px] text-cyan-200 font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-cyan-500/30 font-bold">.twt / .dark / .v2box / .hat / .npvs</span>
           </button>
         </div>
       </header>
@@ -946,166 +958,166 @@ export default function ConfigInspectorPage() {
           setIsDraggingFile(false);
         }}
         onDrop={handleDropFile}
-        className={`bg-slate-900/80 border rounded-2xl p-4 sm:p-5 shadow-xl backdrop-blur-md transition ${isDraggingFile ? 'border-cyan-400 bg-cyan-950/20' : 'border-slate-800/90'
+        className={`card-modern rounded-2xl p-4 sm:p-5 shadow-2xl transition ${isDraggingFile ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-cyan-950/30' : ''
           }`}
       >
         {/* Top bar inside card: Label + Format Quick Guide */}
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-          <label className="text-xs font-semibold tracking-wide text-slate-300 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+          <label className="text-xs font-bold tracking-wide text-white flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400/80 animate-pulse"></span>
             Config Data, Cloud UUID or Share Link
           </label>
-          <span className="text-[11px] font-mono text-cyan-400/90 font-medium">
-            12 VPN Formats Supported
+          <span className="text-[11px] font-mono text-cyan-300 font-bold bg-cyan-950/60 px-2 py-0.5 rounded-md border border-cyan-500/30">
+            15 VPN Formats Supported
           </span>
         </div>
 
         {/* List of All Supported VPNs Verified by Web */}
-        <div className="mb-3.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800/80">
+        <div className="mb-3.5 p-3 rounded-xl card-modern-inner">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              Supported VPN Applications & Verification Modes
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/80"></span>
+              Supported VPN Applications &amp; Verification Modes
             </span>
-            <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
-              Drag & Drop file or Paste Cloud ID / Link below
+            <span className="text-[10px] text-slate-300 font-mono hidden sm:inline">
+              Drag &amp; Drop file or Paste Cloud ID / Link below
             </span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
             {/* HTTP Weak / HTTP Tweak */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-violet-500/50 transition">
-              <div className="font-bold text-violet-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-httpweak transition hover:scale-[1.02]">
+              <div className="font-bold text-violet-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0"></span>
                 HTTP Weak / Tweak
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.ht • .hts • config_ • HTTPWEAK-</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.ht • .hts • config_ • HTTPWEAK-</div>
             </div>
 
             {/* 1. Tweve Tunnel */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-amber-500/50 transition">
-              <div className="font-bold text-amber-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-tweve transition hover:scale-[1.02]">
+              <div className="font-bold text-amber-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
                 Tweve Tunnel
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.twt • .tut • UUID • Emojis</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.twt • .tut • UUID • Emojis</div>
             </div>
 
             {/* 2. Creeb Injector */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-emerald-500/50 transition">
-              <div className="font-bold text-emerald-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-creeb transition hover:scale-[1.02]">
+              <div className="font-bold text-emerald-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
                 Creeb Injector
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.creeb • CREEBINJ-</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.creeb • CREEBINJ-</div>
             </div>
 
             {/* 3. HTTP Injector */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-sky-500/50 transition">
-              <div className="font-bold text-sky-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-httpinjector transition hover:scale-[1.02]">
+              <div className="font-bold text-sky-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0"></span>
                 HTTP Injector
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.ehi • .ehil • CgALvYLx</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.ehi • .ehil • CgALvYLx</div>
             </div>
 
             {/* 4. OpenTunnel */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-indigo-500/50 transition">
-              <div className="font-bold text-indigo-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-opentunnel transition hover:scale-[1.02]">
+              <div className="font-bold text-indigo-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0"></span>
                 OpenTunnel
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.tnl • RoosterKid Cloud</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.tnl • RoosterKid Cloud</div>
             </div>
 
             {/* 5. HTTP Custom */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-purple-500/50 transition">
-              <div className="font-bold text-purple-300 text-[11px] truncate flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0"></span>
+            <div className="p-2 rounded-lg vpn-pill-httpcustom transition hover:scale-[1.02]">
+              <div className="font-bold text-fuchsia-200 text-[11px] truncate flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shrink-0"></span>
                 HTTP Custom
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.hc (EasyPro Custom)</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.hc (EasyPro Custom)</div>
             </div>
 
             {/* 6. NPV Tunnel */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-teal-500/50 transition">
-              <div className="font-bold text-teal-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-napsternetv transition hover:scale-[1.02]">
+              <div className="font-bold text-teal-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0"></span>
                 NPV / NapsternetV
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.npvs • .npvt V2/V4</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.npvs • .npvt V2/V4</div>
             </div>
 
             {/* 6b. HA Tunnel Plus */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-amber-500/50 transition">
-              <div className="font-bold text-amber-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-hatunnel transition hover:scale-[1.02]">
+              <div className="font-bold text-amber-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
                 HA Tunnel Plus
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.hat • TNJL Locked Envelope</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.hat • TNJL Locked Envelope</div>
             </div>
 
             {/* 6c. V2Box - V2ray Client */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-cyan-500/50 transition">
-              <div className="font-bold text-cyan-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-v2box transition hover:scale-[1.02]">
+              <div className="font-bold text-cyan-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0"></span>
                 V2Box Client
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.v2box • v2box:// • chain://</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.v2box • v2box:// • chain://</div>
             </div>
 
             {/* 7. SSH Custom */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-yellow-500/50 transition">
-              <div className="font-bold text-yellow-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-sshcustom transition hover:scale-[1.02]">
+              <div className="font-bold text-yellow-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 shrink-0"></span>
                 SSH Custom
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.ssc • Ssc:// ChaCha20</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.ssc • Ssc:// ChaCha20</div>
             </div>
 
             {/* 8. V2Ray / Xray Core */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-cyan-500/50 transition">
-              <div className="font-bold text-cyan-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-v2ray transition hover:scale-[1.02]">
+              <div className="font-bold text-cyan-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0"></span>
                 V2Ray / Xray
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">vmess:// • vless:// • trojan://</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">vmess:// • vless:// • trojan://</div>
             </div>
 
             {/* 9. Hysteria 2 */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-pink-500/50 transition">
-              <div className="font-bold text-pink-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-hysteria2 transition hover:scale-[1.02]">
+              <div className="font-bold text-pink-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-pink-400 shrink-0"></span>
                 Hysteria 2
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">hy2:// (QUIC / UDP)</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">hy2:// (QUIC / UDP)</div>
             </div>
 
             {/* 10. WireGuard */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-orange-500/50 transition">
-              <div className="font-bold text-orange-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-wireguard transition hover:scale-[1.02]">
+              <div className="font-bold text-orange-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0"></span>
                 WireGuard
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.conf • Peer & Interface</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.conf • Peer &amp; Interface</div>
             </div>
 
             {/* 11. SlowDNS / DNSTT */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-blue-500/50 transition">
-              <div className="font-bold text-blue-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-slowdns transition hover:scale-[1.02]">
+              <div className="font-bold text-blue-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0"></span>
                 SlowDNS (DNSTT)
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">Curve25519 PubKey • NS</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">Curve25519 PubKey • NS</div>
             </div>
 
             {/* 12. Direct Payloads & SSL */}
-            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-emerald-500/50 transition">
-              <div className="font-bold text-emerald-300 text-[11px] truncate flex items-center gap-1">
+            <div className="p-2 rounded-lg vpn-pill-sshssl transition hover:scale-[1.02]">
+              <div className="font-bold text-emerald-200 text-[11px] truncate flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
                 SSH / SSL / WS Proxy
               </div>
-              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">HTTP [crlf] Payload • SNI</div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">HTTP [crlf] Payload • SNI</div>
             </div>
           </div>
         </div>
@@ -1138,16 +1150,16 @@ export default function ConfigInspectorPage() {
               if (importedFileInfo) setImportedFileInfo(null);
             }}
             placeholder="Paste Cloud Config UUID, V2Box URI (v2box://, chain://), CREEBINJ token, Dark Tunnel URI (darktunnel://), share URL (vless://, vmess://, ssc://), or drag & drop a config file (.v2box, .dark, .twt, .creeb, .hc, .npvs, .tnl, .ehi)..."
-            className="w-full rounded-xl bg-slate-950/90 border border-slate-700/80 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 focus:outline-none px-3.5 sm:px-4 py-2.5 text-xs sm:text-sm text-slate-100 font-mono placeholder-slate-500 resize-y min-h-[80px] leading-relaxed transition"
+            className="w-full rounded-xl bg-slate-950/95 border-2 border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/40 focus:outline-none px-3.5 sm:px-4 py-2.5 text-xs sm:text-sm text-white font-mono placeholder-slate-400 resize-y min-h-[85px] leading-relaxed transition shadow-inner"
           />
         </div>
 
         {/* Options & Action Toolbar */}
-        <div className="mt-3.5 pt-3 border-t border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <div className="mt-3.5 pt-3 border-t border-slate-800/80 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5 flex-1 min-w-0">
             {/* Inline Passphrase Field */}
-            <div className="flex items-center gap-2 bg-slate-950/90 border border-slate-700/80 focus-within:border-cyan-400 rounded-lg px-3 py-2 sm:py-1.5 transition w-full sm:w-auto">
-              <svg width="14" height="14" className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="flex items-center gap-2 bg-slate-950/90 border border-slate-700/80 focus-within:border-cyan-400 focus-within:ring-1 focus-within:ring-cyan-400 rounded-lg px-3 py-2 sm:py-1.5 transition w-full sm:w-auto">
+              <svg width="14" height="14" className="w-3.5 h-3.5 text-slate-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
               <input
@@ -1155,12 +1167,12 @@ export default function ConfigInspectorPage() {
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
                 placeholder="Passphrase (optional)"
-                className="bg-transparent text-xs text-slate-200 placeholder-slate-500 focus:outline-none w-full sm:w-48"
+                className="bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none w-full sm:w-48 font-medium"
               />
             </div>
 
             {/* Live Network Probes Toggle Pill */}
-            <label className="flex items-center justify-between sm:justify-start gap-2 text-xs text-slate-300 cursor-pointer select-none bg-slate-950/80 border border-slate-800 hover:border-slate-700 px-3 py-2 sm:py-1.5 rounded-lg transition shrink-0">
+            <label className="flex items-center justify-between sm:justify-start gap-2 text-xs text-slate-200 font-semibold cursor-pointer select-none bg-slate-950/90 border border-slate-800 hover:border-slate-700 px-3 py-2 sm:py-1.5 rounded-lg transition shrink-0">
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -1184,7 +1196,7 @@ export default function ConfigInspectorPage() {
                   setResult(null);
                   setImportedFileInfo(null);
                 }}
-                className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs sm:text-sm font-semibold border border-slate-700 transition cursor-pointer active:scale-95 text-center"
+                className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-bold border border-slate-700 transition cursor-pointer active:scale-95 text-center"
               >
                 Clear
               </button>
@@ -1193,11 +1205,11 @@ export default function ConfigInspectorPage() {
               type="button"
               disabled={loading || !input.trim()}
               onClick={() => handleInspect()}
-              className="flex-1 sm:flex-none px-6 py-2.5 sm:py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-500 hover:from-cyan-300 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-bold text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-95 shrink-0"
+              className="btn-verify-gradient flex-1 sm:flex-none px-7 py-2.5 sm:py-2 rounded-xl disabled:opacity-40 text-white font-extrabold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer active:scale-95 shrink-0"
             >
               {loading ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Inspecting...
                 </>
               ) : (
@@ -1235,30 +1247,30 @@ export default function ConfigInspectorPage() {
       {result?.success && sum && cd && (
         <div className="mt-6 space-y-6">
           {/* 1. Active Connection Method & Flow Pipeline Banner */}
-          <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-900 border border-slate-800 shadow-lg">
+          <div className="p-5 rounded-2xl card-modern shadow-xl">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="px-2.5 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  <span className="px-3 py-1 rounded-lg text-xs font-extrabold uppercase tracking-wider bg-cyan-500/25 text-cyan-200 border border-cyan-400/50 shadow-sm shadow-cyan-500/25">
                     Mode #{sum.tunnelType} • {sum.connectionCategory}
                   </span>
-                  <h2 className="text-xl font-bold text-white">{sum.connectionTypeName}</h2>
+                  <h2 className="text-xl font-extrabold text-white tracking-tight">{sum.connectionTypeName}</h2>
                   {sum.isProtected && (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-400/40 shadow-sm shadow-amber-500/20">
                       Locked / Protected Config
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-slate-400 mt-1">{sum.connectionTypeDescription}</p>
+                <p className="text-sm text-slate-200 font-medium mt-1.5">{sum.connectionTypeDescription}</p>
               </div>
 
               {/* Detected Protocol Badges */}
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-slate-500 mr-1">Configured Blocks:</span>
+                <span className="text-xs text-slate-300 font-semibold mr-1">Configured Blocks:</span>
                 {sum.activeProtocolsDetected.map((proto) => (
                   <span
                     key={proto}
-                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/40 shadow-sm shadow-emerald-500/20"
                   >
                     {proto}
                   </span>
@@ -1268,18 +1280,18 @@ export default function ConfigInspectorPage() {
 
             {/* Visual Connection Flow Pipeline */}
             {sum.flowDiagram && sum.flowDiagram.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-slate-800/80 flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 mr-1">
+              <div className="mt-4 pt-4 border-t border-slate-700/80 flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold uppercase tracking-wider text-cyan-300 mr-1">
                   Tunnel Packet Path:
                 </span>
                 {sum.flowDiagram.map((step, idx) => (
                   <React.Fragment key={idx}>
-                    <div className="px-3 py-1.5 rounded-xl bg-slate-950/90 border border-slate-800 text-xs font-mono text-slate-200 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                    <div className="px-3 py-1.5 rounded-xl card-modern-inner text-xs font-mono font-bold text-white flex items-center gap-1.5 border border-slate-700 shadow-sm">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400/80" />
                       {step}
                     </div>
                     {idx < sum.flowDiagram.length - 1 && (
-                      <svg width="16" height="16" className="w-4 h-4 text-slate-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <svg width="16" height="16" className="w-4 h-4 text-cyan-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                       </svg>
                     )}
