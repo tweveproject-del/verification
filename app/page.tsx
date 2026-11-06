@@ -482,6 +482,75 @@ type InspectResponse = {
       rawEnvelopeHexPreview: string;
       payloadLength: number;
     } | null;
+    isV2boxContainer?: boolean;
+    v2boxContainer?: {
+      appName: string;
+      packageName: string;
+      version: string;
+      wireFormat: string;
+      magic: string;
+      profileName: string;
+      isPasswordProtected: boolean;
+      isDeviceLocked: boolean;
+      allowedDeviceIDs: string[];
+      expirationTimestamp: number;
+      expirationFormatted: string;
+      isExpired: boolean;
+      cipher: string;
+      keyDerivation: string;
+      nonce?: string;
+      tag?: string;
+      rawEnvelopeHexPreview?: string;
+      supportedProtocols: string[];
+      activeProtocol: string;
+      outboundServer: string;
+      outboundPort: number;
+      uuid?: string;
+      sni?: string;
+      transport?: string;
+      security?: string;
+      path?: string;
+      realityPublicKey?: string;
+      realityShortId?: string;
+      chainingHops?: string[];
+      cloud: {
+        hasCloud: boolean;
+        subscriptionUrl?: string;
+        subscriptionRemarks?: string;
+        autoUpdate?: boolean;
+        updateIntervalHours?: number;
+        userInfo?: {
+          upload: string;
+          download: string;
+          total: string;
+          expire: string;
+        };
+        webDavConfig?: {
+          enabled: boolean;
+          baseUrl: string;
+          remoteBasePath: string;
+          timeoutSeconds: number;
+        };
+        apiServer: string;
+      };
+      ssh?: {
+        host: string;
+        port: number;
+        user: string;
+        pass: string;
+        udpGwPort: number;
+        privateKeyContent?: string;
+      };
+      hysteria?: {
+        hopPorts: string;
+        salamander: string;
+        pinSha256: string;
+        upMbps: number;
+        downMbps: number;
+      };
+      shareLink?: string;
+      rawDecryptedText?: string;
+    } | null;
     ssh: {
       present: boolean;
       activeInMode: boolean;
@@ -624,7 +693,7 @@ export default function ConfigInspectorPage() {
   const [customCloudUrl, setCustomCloudUrl] = useState('');
   const [httpWeakProtocolTab, setHttpWeakProtocolTab] = useState<'openvpn' | 'ssh' | 'v2ray' | 'hysteria' | 'slowdns' | 'wireguard'>('openvpn');
   const [activeProtocolTab, setActiveProtocolTab] = useState<
-    'auto' | 'http_injector' | 'opentunnel' | 'hc' | 'npvs' | 'ssc' | 'creeb' | 'httpweak' | 'darktunnel' | 'hatunnel' | 'v2ray' | 'dnstt' | 'ssh_proxy' | 'hysteria2' | 'wireguard'
+    'auto' | 'http_injector' | 'opentunnel' | 'hc' | 'npvs' | 'ssc' | 'creeb' | 'httpweak' | 'darktunnel' | 'hatunnel' | 'v2box' | 'v2ray' | 'dnstt' | 'ssh_proxy' | 'hysteria2' | 'wireguard'
   >('auto');
   const [importedFileInfo, setImportedFileInfo] = useState<{ name: string; size: number } | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -801,6 +870,8 @@ export default function ConfigInspectorPage() {
     activeProtocolTab === 'darktunnel' || (activeProtocolTab === 'auto' && Boolean(cd?.darkTunnelContainer));
   const showHaTunnelCard =
     activeProtocolTab === 'hatunnel' || (activeProtocolTab === 'auto' && Boolean(cd?.haTunnelContainer));
+  const showV2BoxCard =
+    activeProtocolTab === 'v2box' || (activeProtocolTab === 'auto' && Boolean(cd?.v2boxContainer));
   const showCreebCard =
     activeProtocolTab === 'creeb' || (activeProtocolTab === 'auto' && Boolean(cd?.creebContainer));
   const showV2RayCard =
@@ -843,7 +914,7 @@ export default function ConfigInspectorPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".twt,.tut,.ssc,.npvs,.npvt,.hc,.tnl,.ehi,.ehil,.creeb,.dark,.dark.backup,.hat,.json,.txt,.conf"
+            accept=".twt,.tut,.ssc,.npvs,.npvt,.hc,.tnl,.ehi,.ehil,.creeb,.dark,.dark.backup,.hat,.v2box,.v2b,.json,.txt,.conf"
             onChange={handleFileUpload}
             className="hidden"
             style={{ display: 'none' }}
@@ -857,7 +928,7 @@ export default function ConfigInspectorPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
             <span>Import Config File</span>
-            <span className="hidden lg:inline text-[10px] text-cyan-300 font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700/60">.twt / .dark / .creeb / .npvs / .hat / .hc</span>
+            <span className="hidden lg:inline text-[10px] text-cyan-300 font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-700/60">.twt / .dark / .v2box / .creeb / .npvs / .hat</span>
           </button>
         </div>
       </header>
@@ -974,6 +1045,15 @@ export default function ConfigInspectorPage() {
               <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.hat • TNJL Locked Envelope</div>
             </div>
 
+            {/* 6c. V2Box - V2ray Client */}
+            <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-cyan-500/50 transition">
+              <div className="font-bold text-cyan-300 text-[11px] truncate flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0"></span>
+                V2Box Client
+              </div>
+              <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">.v2box • v2box:// • chain://</div>
+            </div>
+
             {/* 7. SSH Custom */}
             <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/90 hover:border-yellow-500/50 transition">
               <div className="font-bold text-yellow-300 text-[11px] truncate flex items-center gap-1">
@@ -1044,7 +1124,7 @@ export default function ConfigInspectorPage() {
               onClick={() => fileInputRef.current?.click()}
               className="text-xs text-cyan-400 hover:underline cursor-pointer"
             >
-              Change File (.twt / .creeb / .tut / .ssc / .npvs / .npvt / .hat / .hc / .tnl / .ehi / .dark)
+              Change File (.twt / .v2box / .creeb / .tut / .ssc / .npvs / .npvt / .hat / .hc / .tnl / .ehi / .dark)
             </button>
           </div>
         )}
@@ -1057,7 +1137,7 @@ export default function ConfigInspectorPage() {
               setInput(e.target.value);
               if (importedFileInfo) setImportedFileInfo(null);
             }}
-            placeholder="Paste Cloud Config UUID, CREEBINJ token, Dark Tunnel URI (darktunnel://), share URL (vless://, vmess://, ssc://), or drag & drop a config file (.dark, .twt, .creeb, .hc, .npvs, .tnl, .ehi)..."
+            placeholder="Paste Cloud Config UUID, V2Box URI (v2box://, chain://), CREEBINJ token, Dark Tunnel URI (darktunnel://), share URL (vless://, vmess://, ssc://), or drag & drop a config file (.v2box, .dark, .twt, .creeb, .hc, .npvs, .tnl, .ehi)..."
             className="w-full rounded-xl bg-slate-950/90 border border-slate-700/80 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 focus:outline-none px-3.5 sm:px-4 py-2.5 text-xs sm:text-sm text-slate-100 font-mono placeholder-slate-500 resize-y min-h-[80px] leading-relaxed transition"
           />
         </div>
@@ -1213,15 +1293,15 @@ export default function ConfigInspectorPage() {
           {result.diagnosis && (
             <div
               className={`p-5 rounded-2xl border ${result.diagnosis.healthy
-                  ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-100'
-                  : 'bg-amber-950/35 border-amber-500/40 text-amber-100'
+                ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-100'
+                : 'bg-amber-950/35 border-amber-500/40 text-amber-100'
                 }`}
             >
               <div className="flex items-start gap-3.5">
                 <div
                   className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${result.diagnosis.healthy
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-amber-500/20 text-amber-400'
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'bg-amber-500/20 text-amber-400'
                     }`}
                 >
                   {result.diagnosis.healthy ? (
@@ -1469,6 +1549,7 @@ export default function ConfigInspectorPage() {
                 ...(cd.hcContainer ? [{ id: 'hc', label: 'HTTP Custom (.hc)', active: true }] : []),
                 ...(cd.npvsContainer ? [{ id: 'npvs', label: 'NPV Tunnel (.npvs / .npvt)', active: true }] : []),
                 ...(cd.haTunnelContainer ? [{ id: 'hatunnel', label: 'HA Tunnel (.hat)', active: true }] : []),
+                ...(cd.v2boxContainer ? [{ id: 'v2box', label: 'V2Box (.v2box)', active: true }] : []),
                 ...(cd.sscContainer ? [{ id: 'ssc', label: 'SSH Custom (Ssc://)', active: true }] : []),
                 ...(cd.httpWeakContainer ? [{ id: 'httpweak', label: 'HTTP Weak / Tweak (.ht)', active: true }] : []),
                 ...(cd.darkTunnelContainer ? [{ id: 'darktunnel', label: 'Dark Tunnel (.dark)', active: true }] : []),
@@ -1484,8 +1565,8 @@ export default function ConfigInspectorPage() {
                   type="button"
                   onClick={() => setActiveProtocolTab(tab.id as any)}
                   className={`px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 sm:shrink ${activeProtocolTab === tab.id
-                      ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20'
-                      : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                    ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-slate-800'
                     }`}
                 >
                   <span>{tab.label}</span>
@@ -2129,8 +2210,8 @@ export default function ConfigInspectorPage() {
                       </span>
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${cd.creebContainer.isLocked
-                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                            : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                          ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                          : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                           }`}
                       >
                         {cd.creebContainer.isLocked ? 'Locked Profile' : 'Unlocked'}
@@ -2516,11 +2597,10 @@ export default function ConfigInspectorPage() {
                         Primary: {cd.httpWeakContainer.tunnelType}
                       </span>
                       <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                          cd.httpWeakContainer.restrictions.cloudProtected
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${cd.httpWeakContainer.restrictions.cloudProtected
                             ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
                             : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                        }`}
+                          }`}
                       >
                         {cd.httpWeakContainer.restrictions.cloudProtected ? 'Cloud Protected' : 'Unlocked'}
                       </span>
@@ -2597,11 +2677,10 @@ export default function ConfigInspectorPage() {
                           key={subTab.id}
                           type="button"
                           onClick={() => setHttpWeakProtocolTab(subTab.id as any)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap transition ${
-                            httpWeakProtocolTab === subTab.id
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap transition ${httpWeakProtocolTab === subTab.id
                               ? 'bg-violet-600 text-white font-bold shadow-sm shadow-violet-600/30'
                               : 'bg-slate-950/80 hover:bg-slate-800 text-slate-400 border border-slate-800'
-                          }`}
+                            }`}
                         >
                           {subTab.label}
                         </button>
@@ -2954,11 +3033,10 @@ export default function ConfigInspectorPage() {
                         Primary: {cd.darkTunnelContainer.tunnelTypeName}
                       </span>
                       <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                          cd.darkTunnelContainer.isClosed
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${cd.darkTunnelContainer.isClosed
                             ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
                             : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                        }`}
+                          }`}
                       >
                         {cd.darkTunnelContainer.isClosed ? 'Closed / Protected' : 'Open / Unclosed'}
                       </span>
@@ -3443,6 +3521,303 @@ export default function ConfigInspectorPage() {
                       className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-600 text-white font-bold text-xs cursor-pointer hover:opacity-90 transition shadow-md shadow-amber-500/20"
                     >
                       Run Live Verification Probe for {cd.haTunnelContainer.profileName}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ==================== V2BOX (.V2BOX / V2BOX://) MULTI-PROTOCOL & CLOUD INSPECTOR CARD ==================== */}
+              {showV2BoxCard && cd.v2boxContainer && (
+                <div className="bg-slate-900/75 border border-cyan-500/40 rounded-2xl p-4 sm:p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-2.5">
+                    <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shrink-0" />
+                      <h3 className="text-base font-bold text-white truncate max-w-full">
+                        V2Box Multi-Protocol Engine (<code className="text-cyan-300 break-all">{cd.v2boxContainer.profileName}</code>)
+                      </h3>
+                      <span className="text-[11px] font-mono text-cyan-300/80 bg-cyan-950/40 border border-cyan-800/50 px-2 py-0.5 rounded-md">
+                        {cd.v2boxContainer.packageName} • v{cd.v2boxContainer.version}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => copyText('v2boxShare', cd.v2boxContainer!.shareLink || '')}
+                        className="px-2.5 py-1 rounded-lg bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 text-xs font-semibold border border-cyan-500/30 cursor-pointer transition"
+                      >
+                        {copiedKey === 'v2boxShare' ? 'Copied Share Link!' : 'Copy Share Link'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyText('v2boxEndpoint', `${cd.v2boxContainer!.outboundServer}:${cd.v2boxContainer!.outboundPort}`)}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 cursor-pointer transition"
+                      >
+                        {copiedKey === 'v2boxEndpoint' ? 'Copied Host:Port!' : 'Copy Server'}
+                      </button>
+                      <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-bold uppercase tracking-wider border border-cyan-500/40">
+                        {cd.v2boxContainer.activeProtocol}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          cd.v2boxContainer.isDeviceLocked || cd.v2boxContainer.isPasswordProtected
+                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                            : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                        }`}
+                      >
+                        {cd.v2boxContainer.isDeviceLocked ? 'Hardware Locked' : (cd.v2boxContainer.isPasswordProtected ? 'Password Locked' : 'Unlocked Profile')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* V2Box Core Profile Specifications Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Wire Specification</span>
+                      <span className="font-mono text-cyan-200 font-semibold break-words mt-0.5 block">{cd.v2boxContainer.wireFormat}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Primary Outbound</span>
+                      <span className="font-mono text-cyan-200 font-semibold truncate mt-0.5 block">{cd.v2boxContainer.outboundServer}:{cd.v2boxContainer.outboundPort}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Transport & Security</span>
+                      <span className="font-mono text-cyan-200 font-semibold truncate mt-0.5 block">
+                        {cd.v2boxContainer.transport?.toUpperCase() || 'TCP'} • {cd.v2boxContainer.security?.toUpperCase() || 'TLS'}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                      <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Profile Expiration</span>
+                      <span className={`font-mono font-semibold truncate mt-0.5 block ${cd.v2boxContainer.isExpired ? 'text-rose-400' : 'text-emerald-300'}`}>
+                        {cd.v2boxContainer.expirationFormatted}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Security Matrix Badges */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                      <span>V2Box Cryptographic Security & Hardware Protection Matrix</span>
+                      <span className="text-[11px] font-mono text-cyan-400">{cd.v2boxContainer.cipher}</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Device Binding:</span>
+                        <span className={`font-mono font-bold ${cd.v2boxContainer.isDeviceLocked ? 'text-amber-400' : 'text-emerald-400'}`}>
+                          {cd.v2boxContainer.isDeviceLocked ? `${cd.v2boxContainer.allowedDeviceIDs.length} Device(s)` : 'Any Device'}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Key Derivation:</span>
+                        <span className="font-mono font-bold text-cyan-300 truncate max-w-[120px]" title={cd.v2boxContainer.keyDerivation}>
+                          {cd.v2boxContainer.keyDerivation.split('/')[0].trim()}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Password Guard:</span>
+                        <span className={`font-mono font-bold ${cd.v2boxContainer.isPasswordProtected ? 'text-amber-400' : 'text-slate-400'}`}>
+                          {cd.v2boxContainer.isPasswordProtected ? 'Protected' : 'None'}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <span className="text-slate-400">Core Runtime:</span>
+                        <span className="font-mono font-bold text-indigo-400">LibXray Lite</span>
+                      </div>
+                    </div>
+
+                    {cd.v2boxContainer.allowedDeviceIDs.length > 0 && (
+                      <div className="pt-1">
+                        <span className="text-[11px] text-slate-400">Authorized Device UUIDs:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {cd.v2boxContainer.allowedDeviceIDs.map((hw, idx) => (
+                            <span key={idx} className="font-mono text-[10px] bg-slate-900 text-amber-300 px-2 py-0.5 rounded border border-slate-800">
+                              {hw}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Cloud Subscriptions & WebDAV Cloud Sync */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-cyan-500/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-cyan-300">
+                          V2Box Cloud Subscriptions & WebDAV Cloud Integration
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                        {cd.v2boxContainer.cloud.hasCloud ? 'Cloud Enabled' : 'Local / Offline Sync'}
+                      </span>
+                    </div>
+
+                    {cd.v2boxContainer.cloud.subscriptionUrl ? (
+                      <div className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-slate-300">Remote Cloud Subscription URL:</span>
+                          <button
+                            type="button"
+                            onClick={() => copyText('v2boxSubUrl', cd.v2boxContainer!.cloud.subscriptionUrl!)}
+                            className="text-[11px] text-cyan-400 hover:underline cursor-pointer"
+                          >
+                            {copiedKey === 'v2boxSubUrl' ? 'Copied URL!' : 'Copy Subscription Link'}
+                          </button>
+                        </div>
+                        <div className="font-mono text-xs text-cyan-200/90 break-all bg-slate-950 p-2 rounded border border-slate-800/80">
+                          {cd.v2boxContainer.cloud.subscriptionUrl}
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                          <span>Auto-Update Sync: <strong className="text-emerald-400">{cd.v2boxContainer.cloud.autoUpdate ? `Enabled (${cd.v2boxContainer.cloud.updateIntervalHours}h interval)` : 'Manual'}</strong></span>
+                          <span>Cloud API: <span className="font-mono text-slate-300">{cd.v2boxContainer.cloud.apiServer.split('/')[0].trim()}</span></span>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {cd.v2boxContainer.cloud.webDavConfig?.enabled ? (
+                      <div className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5">
+                        <span className="text-[11px] font-semibold text-slate-300 block">WebDAV Cloud Backup & Configuration Restore:</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                          <div className="p-1.5 rounded bg-slate-950 border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Endpoint Base URL</span>
+                            <span className="font-mono text-cyan-300 break-all">{cd.v2boxContainer.cloud.webDavConfig.baseUrl}</span>
+                          </div>
+                          <div className="p-1.5 rounded bg-slate-950 border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Remote Cloud Path</span>
+                            <span className="font-mono text-cyan-300">{cd.v2boxContainer.cloud.webDavConfig.remoteBasePath}</span>
+                          </div>
+                          <div className="p-1.5 rounded bg-slate-950 border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block">Timeout</span>
+                            <span className="font-mono text-cyan-300">{cd.v2boxContainer.cloud.webDavConfig.timeoutSeconds}s</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1">
+                      <div className="p-2 rounded bg-slate-900/90 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px]">Cloud Upload</span>
+                        <span className="font-mono text-slate-200 font-semibold">{cd.v2boxContainer.cloud.userInfo?.upload || '0.00 GB'}</span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900/90 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px]">Cloud Download</span>
+                        <span className="font-mono text-slate-200 font-semibold">{cd.v2boxContainer.cloud.userInfo?.download || '0.00 GB'}</span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900/90 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px]">Total Quota</span>
+                        <span className="font-mono text-cyan-300 font-semibold">{cd.v2boxContainer.cloud.userInfo?.total || 'Unlimited'}</span>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900/90 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px]">Quota Valid Until</span>
+                        <span className="font-mono text-emerald-300 font-semibold">{cd.v2boxContainer.cloud.userInfo?.expire || 'Permanent'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Chaining Hops (if chain://) */}
+                  {cd.v2boxContainer.chainingHops && cd.v2boxContainer.chainingHops.length > 0 && (
+                    <div className="p-3.5 rounded-xl bg-slate-950/80 border border-indigo-500/30 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-indigo-300">
+                          V2Box Proxy Chaining Pipeline ({cd.v2boxContainer.chainingHops.length} Hops)
+                        </span>
+                        <span className="text-[10px] font-mono text-indigo-400">Multi-Hop Routing</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {cd.v2boxContainer.chainingHops.map((hop, hIdx) => (
+                          <div key={hIdx} className="flex items-center gap-2 p-2 rounded bg-slate-900 border border-slate-800 text-xs">
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold text-[10px]">Hop #{hIdx + 1}</span>
+                            <span className="font-mono text-slate-200 break-all">{hop}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Active Protocol Network Pipeline Details */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Active Outbound Network Pipeline & Target Endpoint
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                      <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px]">Server Endpoint</span>
+                        <span className="font-mono text-white font-semibold">{cd.v2boxContainer.outboundServer}:{cd.v2boxContainer.outboundPort}</span>
+                      </div>
+                      <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px]">SNI / ServerName</span>
+                        <span className="font-mono text-cyan-300 break-all">{cd.v2boxContainer.sni || 'None'}</span>
+                      </div>
+                      <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px]">UUID / Secret Key</span>
+                        <span className="font-mono text-slate-300 break-all">{cd.v2boxContainer.uuid || 'Configured via Profile'}</span>
+                      </div>
+                      {cd.v2boxContainer.path && (
+                        <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                          <span className="text-slate-400 block text-[10px]">Path / gRPC Service</span>
+                          <span className="font-mono text-cyan-300">{cd.v2boxContainer.path}</span>
+                        </div>
+                      )}
+                      {cd.v2boxContainer.realityPublicKey && (
+                        <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                          <span className="text-slate-400 block text-[10px]">Reality Public Key (pbk)</span>
+                          <span className="font-mono text-amber-300 break-all">{cd.v2boxContainer.realityPublicKey}</span>
+                        </div>
+                      )}
+                      {cd.v2boxContainer.realityShortId && (
+                        <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
+                          <span className="text-slate-400 block text-[10px]">Reality Short ID (sid)</span>
+                          <span className="font-mono text-amber-300">{cd.v2boxContainer.realityShortId}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Supported Protocols Matrix */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      V2Box Supported Protocols Engine Matrix
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-xs">
+                      {cd.v2boxContainer.supportedProtocols.map((proto, pIdx) => (
+                        <div key={pIdx} className="p-2 rounded bg-slate-900 border border-slate-800/80 flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+                          <span className="font-mono text-slate-200 text-[11px] truncate">{proto}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Raw Envelope / Hex Preview */}
+                  {cd.v2boxContainer.rawEnvelopeHexPreview && (
+                    <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                          V2Box Raw Encrypted Envelope Header Hex Preview
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyText('v2boxHex', cd.v2boxContainer!.rawEnvelopeHexPreview!)}
+                          className="text-xs text-cyan-400 hover:underline cursor-pointer"
+                        >
+                          {copiedKey === 'v2boxHex' ? 'Copied Hex!' : 'Copy Hex'}
+                        </button>
+                      </div>
+                      <div className="font-mono text-xs text-cyan-300/80 break-all bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                        {cd.v2boxContainer.rawEnvelopeHexPreview}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => handleInspect()}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold text-xs cursor-pointer hover:opacity-90 transition shadow-md shadow-cyan-500/20"
+                    >
+                      Run Live Verification Probe for {cd.v2boxContainer.profileName}
                     </button>
                   </div>
                 </div>
@@ -4219,8 +4594,8 @@ export default function ConfigInspectorPage() {
                               HTTP Status:{' '}
                               <span
                                 className={`font-mono font-bold ${diag.v2rayWsUpgradeProbe.statusCode === 101
-                                    ? 'text-emerald-400'
-                                    : 'text-amber-300'
+                                  ? 'text-emerald-400'
+                                  : 'text-amber-300'
                                   }`}
                               >
                                 {diag.v2rayWsUpgradeProbe.statusLine}

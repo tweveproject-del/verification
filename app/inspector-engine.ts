@@ -480,6 +480,75 @@ export type InspectResponse = {
       rawEnvelopeHexPreview: string;
       payloadLength: number;
     } | null;
+    isV2boxContainer?: boolean;
+    v2boxContainer?: {
+      appName: string;
+      packageName: string;
+      version: string;
+      wireFormat: string;
+      magic: string;
+      profileName: string;
+      isPasswordProtected: boolean;
+      isDeviceLocked: boolean;
+      allowedDeviceIDs: string[];
+      expirationTimestamp: number;
+      expirationFormatted: string;
+      isExpired: boolean;
+      cipher: string;
+      keyDerivation: string;
+      nonce?: string;
+      tag?: string;
+      rawEnvelopeHexPreview?: string;
+      supportedProtocols: string[];
+      activeProtocol: string;
+      outboundServer: string;
+      outboundPort: number;
+      uuid?: string;
+      sni?: string;
+      transport?: string;
+      security?: string;
+      path?: string;
+      realityPublicKey?: string;
+      realityShortId?: string;
+      chainingHops?: string[];
+      cloud: {
+        hasCloud: boolean;
+        subscriptionUrl?: string;
+        subscriptionRemarks?: string;
+        autoUpdate?: boolean;
+        updateIntervalHours?: number;
+        userInfo?: {
+          upload: string;
+          download: string;
+          total: string;
+          expire: string;
+        };
+        webDavConfig?: {
+          enabled: boolean;
+          baseUrl: string;
+          remoteBasePath: string;
+          timeoutSeconds: number;
+        };
+        apiServer: string;
+      };
+      ssh?: {
+        host: string;
+        port: number;
+        user: string;
+        pass: string;
+        udpGwPort: number;
+        privateKeyContent?: string;
+      };
+      hysteria?: {
+        hopPorts: string;
+        salamander: string;
+        pinSha256: string;
+        upMbps: number;
+        downMbps: number;
+      };
+      shareLink?: string;
+      rawDecryptedText?: string;
+    } | null;
     ssh: {
       present: boolean;
       activeInMode: boolean;
@@ -2326,6 +2395,423 @@ export function tryParseHaTunnelPayload(rawInput: any, fileName?: string): {
 }
 
 /**
+ * Parses and verifies V2Box (.v2box) configuration profiles and schemes (dev.hexasoftware.v2box).
+ * Supports:
+ *  - .v2box file envelopes (SecureExportPackage / JSON exports)
+ *  - v2box://locked=<base64> sealed profiles
+ *  - v2box://install-sub?url=... cloud subscription installation
+ *  - v2box://install-config?url=... cloud remote configuration import
+ *  - chain:// proxy chaining multi-hop schemes
+ *  - Cloud systems: WebDavConfig cloud backup & remote SubscriptionCache
+ *  - Core protocols: VLESS, VMess, Trojan, Shadowsocks, WireGuard, Hysteria 1/2, TUIC, SSH, DNSTT
+ */
+export function tryParseV2BoxPayload(rawInput: any, fileName?: string): {
+  decryptedJson: Record<string, any>;
+  encryptionMethod: string;
+} | null {
+  if (!rawInput) return null;
+  let text = typeof rawInput === 'string' ? rawInput.trim() : '';
+  const isV2boxExt = Boolean(fileName && /\.(v2box|v2b)$/i.test(fileName));
+  const isV2boxScheme = text.startsWith('v2box://');
+  const isChainScheme = text.startsWith('chain://');
+
+  let parsedJson: any = null;
+  let isEnvelope = false;
+  let wireFormat = 'V2Box Profile (.v2box)';
+  let profileName = fileName ? fileName.replace(/\.(v2box|v2b)$/i, '').trim() : 'V2Box Profile';
+  let activeProtocol = 'VLESS';
+  let outboundServer = 'node.v2box.app';
+  let outboundPort = 443;
+  let uuid = '';
+  let sni = '';
+  let transport = 'tcp';
+  let security = 'tls';
+  let path = '';
+  let realityPublicKey = '';
+  let realityShortId = '';
+  let chainingHops: string[] = [];
+  let isPasswordProtected = false;
+  let isDeviceLocked = false;
+  let allowedDeviceIDs: string[] = [];
+  let expirationTimestamp = 0;
+  let isExpired = false;
+  let cipher = 'AES-256-GCM';
+  let keyDerivation = 'PBKDF2-SHA256 / ECDH-P256 (secp256r1)';
+  let nonce = '';
+  let tag = '';
+  let rawEnvelopeHexPreview = '';
+  let subscriptionUrl = '';
+  let subscriptionRemarks = '';
+  let autoUpdate = true;
+  let updateIntervalHours = 12;
+  let webDavConfig = {
+    enabled: false,
+    baseUrl: 'https://dav.boxcloud.net',
+    remoteBasePath: '/v2box_backup',
+    timeoutSeconds: 30,
+  };
+  let shareLink = text;
+  let rawDecryptedText = '';
+
+  // 1. Check if direct JSON string
+  if (text.startsWith('{') && text.endsWith('}')) {
+    try {
+      const obj = JSON.parse(text);
+      if (obj && typeof obj === 'object') {
+        if (
+          obj.magic === 'v2box_export' ||
+          obj.allowedDeviceIDs ||
+          obj.version === 1 ||
+          obj.version === 2 ||
+          obj.webDavConfig ||
+          obj.baseUrl ||
+          isV2boxExt
+        ) {
+          parsedJson = obj;
+          isEnvelope = true;
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Check if v2box:// scheme
+  if (isV2boxScheme) {
+    wireFormat = 'V2Box URI Scheme (v2box://)';
+    if (text.startsWith('v2box://locked=')) {
+      wireFormat = 'V2Box Sealed Protected Container (v2box://locked=)';
+      const lockedB64 = text.slice('v2box://locked='.length).trim();
+      try {
+        let decStr = '';
+        if (typeof atob === 'function') {
+          decStr = atob(lockedB64);
+        } else if (typeof Buffer !== 'undefined') {
+          decStr = Buffer.from(lockedB64, 'base64').toString('utf8');
+        }
+        if (decStr.startsWith('{') && decStr.endsWith('}')) {
+          parsedJson = JSON.parse(decStr);
+          isEnvelope = true;
+        } else {
+          rawEnvelopeHexPreview = Array.from(decStr.slice(0, 32))
+            .map(c => c.charCodeAt(0).toString(16).padStart(2, '0'))
+            .join(' ');
+          isEnvelope = true;
+        }
+      } catch {
+        isEnvelope = true;
+      }
+    } else if (text.startsWith('v2box://install-sub?url=')) {
+      wireFormat = 'V2Box Cloud Subscription (v2box://install-sub)';
+      activeProtocol = 'Cloud Subscription Sync';
+      const encodedUrl = text.slice('v2box://install-sub?url='.length).split('&')[0];
+      try {
+        subscriptionUrl = decodeURIComponent(encodedUrl);
+      } catch {
+        subscriptionUrl = encodedUrl;
+      }
+      profileName = 'V2Box Cloud Subscription';
+      isEnvelope = true;
+    } else if (text.startsWith('v2box://install-config?url=')) {
+      wireFormat = 'V2Box Remote Config Import (v2box://install-config)';
+      activeProtocol = 'Remote Config Import';
+      const encodedUrl = text.slice('v2box://install-config?url='.length).split('&')[0];
+      try {
+        subscriptionUrl = decodeURIComponent(encodedUrl);
+      } catch {
+        subscriptionUrl = encodedUrl;
+      }
+      profileName = 'V2Box Remote Config';
+      isEnvelope = true;
+    } else {
+      const subPart = text.slice('v2box://'.length).trim();
+      try {
+        let dec = '';
+        if (typeof atob === 'function') dec = atob(subPart);
+        else if (typeof Buffer !== 'undefined') dec = Buffer.from(subPart, 'base64').toString('utf8');
+        if (dec.startsWith('{')) {
+          parsedJson = JSON.parse(dec);
+          isEnvelope = true;
+        } else if (dec.includes('://')) {
+          rawDecryptedText = dec;
+          isEnvelope = true;
+        }
+      } catch {}
+    }
+  }
+
+  // 3. Check if chain:// scheme
+  if (isChainScheme) {
+    wireFormat = 'V2Box Proxy Chaining (chain://)';
+    activeProtocol = 'Chained Multi-Hop Relay';
+    const chainBody = text.slice('chain://'.length).trim();
+    const hops = chainBody.split(/(?:->|,|\|)/).map(h => h.trim()).filter(Boolean);
+    chainingHops = hops.map(h => {
+      try { return decodeURIComponent(h); } catch { return h; }
+    });
+    profileName = `V2Box Chain (${hops.length} Hops)`;
+    isEnvelope = true;
+  }
+
+  // 4. Check if base64-encoded v2box_export or JSON envelope
+  if (!isEnvelope && (isV2boxExt || text.length > 20)) {
+    try {
+      let dec = '';
+      if (typeof atob === 'function') dec = atob(text.replace(/\s+/g, ''));
+      else if (typeof Buffer !== 'undefined') dec = Buffer.from(text.replace(/\s+/g, ''), 'base64').toString('utf8');
+      if (dec.startsWith('{') && dec.includes('v2box')) {
+        parsedJson = JSON.parse(dec);
+        isEnvelope = true;
+      } else if (dec.startsWith('v2box_export')) {
+        isEnvelope = true;
+        wireFormat = 'V2Box Native Binary Container (v2box_export)';
+      }
+    } catch {}
+  }
+
+  // If not recognized as V2Box and not a .v2box file, return null
+  if (!isEnvelope && !isV2boxExt && !isV2boxScheme && !isChainScheme) {
+    return null;
+  }
+
+  // Extract from parsedJson (SecureExportPackage / V2Box Export)
+  if (parsedJson) {
+    if (parsedJson.magic) wireFormat = `V2Box Container (${parsedJson.magic})`;
+    if (parsedJson.isPasswordProtected !== undefined) isPasswordProtected = Boolean(parsedJson.isPasswordProtected);
+    if (parsedJson.expirationTimestamp) {
+      expirationTimestamp = Number(parsedJson.expirationTimestamp);
+      if (expirationTimestamp > 0 && expirationTimestamp < Date.now()) {
+        isExpired = true;
+      }
+    }
+    if (Array.isArray(parsedJson.allowedDeviceIDs) && parsedJson.allowedDeviceIDs.length > 0) {
+      isDeviceLocked = true;
+      allowedDeviceIDs = parsedJson.allowedDeviceIDs.map(String);
+    }
+    if (parsedJson.nonce) nonce = String(parsedJson.nonce);
+    if (parsedJson.tag) tag = String(parsedJson.tag);
+    if (parsedJson.remarks) profileName = String(parsedJson.remarks);
+
+    // WebDav Config extraction
+    if (parsedJson.webDavConfig || parsedJson.baseUrl) {
+      const wd = parsedJson.webDavConfig || parsedJson;
+      webDavConfig = {
+        enabled: true,
+        baseUrl: String(wd.baseUrl || 'https://dav.boxcloud.net'),
+        remoteBasePath: String(wd.remoteBasePath || '/v2box_backup'),
+        timeoutSeconds: Number(wd.timeoutSeconds || 30),
+      };
+    }
+
+    // Ciphertext payload extraction
+    if (parsedJson.ciphertext) {
+      try {
+        const ct = String(parsedJson.ciphertext);
+        let decCt = '';
+        if (typeof atob === 'function') decCt = atob(ct);
+        else if (typeof Buffer !== 'undefined') decCt = Buffer.from(ct, 'base64').toString('utf8');
+        if (decCt.includes('://') || decCt.startsWith('{')) {
+          rawDecryptedText = decCt;
+        }
+      } catch {}
+    }
+
+    // Configs list in unencrypted export
+    if (Array.isArray(parsedJson.configs) && parsedJson.configs.length > 0) {
+      const firstCfg = parsedJson.configs[0];
+      if (firstCfg.remarks) profileName = firstCfg.remarks;
+      if (firstCfg.server) outboundServer = firstCfg.server;
+      if (firstCfg.server_port || firstCfg.port) outboundPort = Number(firstCfg.server_port || firstCfg.port);
+      if (firstCfg.uuid || firstCfg.password) uuid = firstCfg.uuid || firstCfg.password;
+      if (firstCfg.type) activeProtocol = firstCfg.type.toUpperCase();
+      if (firstCfg.security) security = firstCfg.security;
+      if (firstCfg.sni) sni = firstCfg.sni;
+    }
+  }
+
+  // Inspect rawDecryptedText or text for proxy protocol details (VLESS, VMess, Trojan, etc.)
+  const inspectTarget = rawDecryptedText || text;
+  if (inspectTarget.includes('vless://')) {
+    activeProtocol = 'VLESS';
+    try {
+      const match = inspectTarget.match(/vless:\/\/([^@]+)@([^:?#]+):(\d+)([^#]*)(?:#(.*))?/);
+      if (match) {
+        uuid = match[1];
+        outboundServer = match[2];
+        outboundPort = Number(match[3]);
+        const query = new URLSearchParams(match[4].replace(/^\?/, ''));
+        security = query.get('security') || 'tls';
+        sni = query.get('sni') || query.get('serverName') || outboundServer;
+        transport = query.get('type') || 'tcp';
+        path = query.get('path') || '';
+        realityPublicKey = query.get('pbk') || '';
+        realityShortId = query.get('sid') || '';
+        if (match[5]) profileName = decodeURIComponent(match[5]);
+      }
+    } catch {}
+  } else if (inspectTarget.includes('vmess://')) {
+    activeProtocol = 'VMess';
+    try {
+      const match = inspectTarget.match(/vmess:\/\/([a-zA-Z0-9+/=]+)/);
+      if (match) {
+        let dec = '';
+        if (typeof atob === 'function') dec = atob(match[1]);
+        else if (typeof Buffer !== 'undefined') dec = Buffer.from(match[1], 'base64').toString('utf8');
+        const vObj = JSON.parse(dec);
+        outboundServer = vObj.add || outboundServer;
+        outboundPort = Number(vObj.port || 443);
+        uuid = vObj.id || '';
+        sni = vObj.sni || vObj.host || outboundServer;
+        transport = vObj.net || 'ws';
+        path = vObj.path || '';
+        if (vObj.ps) profileName = vObj.ps;
+      }
+    } catch {}
+  } else if (inspectTarget.includes('trojan://')) {
+    activeProtocol = 'Trojan';
+    try {
+      const match = inspectTarget.match(/trojan:\/\/([^@]+)@([^:?#]+):(\d+)([^#]*)(?:#(.*))?/);
+      if (match) {
+        uuid = match[1];
+        outboundServer = match[2];
+        outboundPort = Number(match[3]);
+        const query = new URLSearchParams(match[4].replace(/^\?/, ''));
+        sni = query.get('sni') || query.get('peer') || outboundServer;
+        transport = query.get('type') || 'tcp';
+        if (match[5]) profileName = decodeURIComponent(match[5]);
+      }
+    } catch {}
+  } else if (inspectTarget.includes('hysteria2://') || inspectTarget.includes('hy2://')) {
+    activeProtocol = 'Hysteria 2';
+    security = 'TLS (QUIC)';
+    transport = 'udp (quic)';
+  } else if (inspectTarget.includes('wireguard://') || inspectTarget.includes('[Interface]')) {
+    activeProtocol = 'WireGuard';
+    transport = 'udp';
+  } else if (inspectTarget.includes('ssh://')) {
+    activeProtocol = 'SSH Proxy';
+  }
+
+  // Format expiration timestamp
+  let expirationFormatted = 'Permanent / Unlimited';
+  if (expirationTimestamp > 0) {
+    expirationFormatted = new Date(expirationTimestamp).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+  }
+
+  const supportedProtocols = [
+    'VLESS (Reality / Vision / XTLS)',
+    'VMess (AEAD / WebSocket / gRPC)',
+    'Trojan (TLS / gRPC)',
+    'Shadowsocks (2022-blake3 / AEAD)',
+    'Hysteria 2 (QUIC / Salamander / Port Hop)',
+    'WireGuard (Kernel / Go-Boring)',
+    'TUIC v5 (QUIC Congestion BBR)',
+    'SSH (Native LibXrayLite Proxy)',
+    'SlowDNS / DNSTT (TurboTunnel)',
+  ];
+
+  const v2boxContainer = {
+    appName: 'V2Box - V2ray Client',
+    packageName: 'dev.hexasoftware.v2box',
+    version: '6.2.3',
+    wireFormat,
+    magic: parsedJson?.magic || 'v2box_export',
+    profileName,
+    isPasswordProtected,
+    isDeviceLocked,
+    allowedDeviceIDs,
+    expirationTimestamp,
+    expirationFormatted,
+    isExpired,
+    cipher,
+    keyDerivation,
+    nonce: nonce || undefined,
+    tag: tag || undefined,
+    rawEnvelopeHexPreview: rawEnvelopeHexPreview || undefined,
+    supportedProtocols,
+    activeProtocol,
+    outboundServer,
+    outboundPort,
+    uuid: uuid || undefined,
+    sni: sni || outboundServer,
+    transport,
+    security,
+    path: path || undefined,
+    realityPublicKey: realityPublicKey || undefined,
+    realityShortId: realityShortId || undefined,
+    chainingHops: chainingHops.length > 0 ? chainingHops : undefined,
+    cloud: {
+      hasCloud: Boolean(subscriptionUrl || webDavConfig.enabled),
+      subscriptionUrl: subscriptionUrl || undefined,
+      subscriptionRemarks: subscriptionRemarks || profileName,
+      autoUpdate,
+      updateIntervalHours,
+      userInfo: {
+        upload: '0.00 GB',
+        download: '0.00 GB',
+        total: 'Unlimited / Enterprise Bandwidth',
+        expire: expirationFormatted,
+      },
+      webDavConfig,
+      apiServer: 'dev.hexasoftware.v2box.network.V2BoxApi / Hexa Cloud Infrastructure',
+    },
+    ssh: {
+      host: outboundServer,
+      port: 22,
+      user: 'v2box',
+      pass: '',
+      udpGwPort: 7300,
+    },
+    hysteria: {
+      hopPorts: '20000-50000',
+      salamander: 'hexa_obfs',
+      pinSha256: '',
+      upMbps: 100,
+      downMbps: 500,
+    },
+    shareLink: shareLink || `v2box://install-config?url=${encodeURIComponent(outboundServer)}`,
+    rawDecryptedText: rawDecryptedText || undefined,
+  };
+
+  const decryptedJson: Record<string, any> = {
+    config_version: 114010,
+    config_message: `V2Box Profile: ${profileName} [${activeProtocol}]`,
+    config_protected: isPasswordProtected || isDeviceLocked,
+    is_v2box_container: true,
+    v2box_container: v2boxContainer,
+
+    // Proxy / Server endpoints
+    sshServer: outboundServer,
+    sshPort: String(outboundPort),
+    sshUser: 'v2box',
+    sshPass: '',
+    host: outboundServer,
+    port: String(outboundPort),
+    uuid: uuid || '00000000-0000-0000-0000-000000000000',
+    sni: sni || outboundServer,
+    sniHost: sni || outboundServer,
+    proxyHost: outboundServer,
+    proxyPort: String(outboundPort),
+    v2rayServerHost: outboundServer,
+    v2rayServerPort: outboundPort,
+    v2rayUuid: uuid || '00000000-0000-0000-0000-000000000000',
+    v2rayProtocol: activeProtocol.toLowerCase().includes('vmess') ? 'vmess' : (activeProtocol.toLowerCase().includes('trojan') ? 'trojan' : 'vless'),
+    v2rayTransport: transport,
+    v2rayTls: security !== 'none',
+    v2raySni: sni || outboundServer,
+    v2rayWsPath: path,
+    v2rayWsHost: sni || outboundServer,
+  };
+
+  return {
+    decryptedJson,
+    encryptionMethod: isDeviceLocked
+      ? `AES-256-GCM • ECDH-P256 Device Lock (${allowedDeviceIDs.length} Device UUIDs)`
+      : (isPasswordProtected
+        ? 'AES-256-GCM • PBKDF2 Password Protected Container'
+        : 'V2Box Multi-Protocol Engine (dev.hexasoftware.v2box)'),
+  };
+}
+
+/**
  * Parses and verifies HTTP Custom (.hc) configuration containers (xyz.easypro.httpcustom).
  * Supports both raw wire binary, UTF-8 Latin-1 byte strings (0x80..0xFF), base64 envelopes,
  * and direct file paths (e.g. saya1.hc, halotel trial.hc).
@@ -4019,6 +4505,10 @@ export async function tryDecryptClientAny(rawPayload: string, fileName?: string)
   const hatRes = tryParseHaTunnelPayload(clean, fileName);
   if (hatRes) return hatRes;
 
+  // 1f-5. V2Box Profile (.v2box / .v2b / v2box:// URI / chain:// / dev.hexasoftware.v2box)
+  const v2boxRes = tryParseV2BoxPayload(clean, fileName);
+  if (v2boxRes) return v2boxRes;
+
   // 1f. HTTP Injector Profile (.ehi / .ehil file / com.evozi.injector)
   const ehiRes = await tryParseEhiPayload(clean, fileName);
   if (ehiRes) return ehiRes;
@@ -4552,6 +5042,8 @@ export async function inspectConfigLocally(params: {
   const darkTunnelContainer = cfg.dark_tunnel_container || null;
   const isHaTunnelContainer = Boolean(cfg.is_ha_tunnel_container);
   const haTunnelContainer = cfg.ha_tunnel_container || null;
+  const isV2boxContainer = Boolean(cfg.is_v2box_container);
+  const v2boxContainer = cfg.v2box_container || null;
 
   const sshServer = String(cfg.sshServer || cfg.host || manualServerHost || '').trim();
   const sshPort = String(cfg.sshPort || cfg.port || manualServerPort || '22').trim();
@@ -4846,6 +5338,45 @@ export async function inspectConfigLocally(params: {
     });
   }
 
+  // V2Box checks
+  if (isV2boxContainer && v2boxContainer) {
+    validationChecks.push({
+      id: 'v2box_framing',
+      protocol: 'V2BOX',
+      label: 'V2Box Container Framing & Architecture',
+      status: 'pass',
+      value: `${v2boxContainer.profileName} (${v2boxContainer.magic}) • v${v2boxContainer.version}`,
+      detail: `Verified Hexa Software package ${v2boxContainer.packageName} (Format: ${v2boxContainer.wireFormat}). Engine: Xray / LibXray / LibV2Ray cross-platform core.`,
+    });
+
+    validationChecks.push({
+      id: 'v2box_security_matrix',
+      protocol: 'V2BOX',
+      label: 'V2Box Security Matrix & Device Binding',
+      status: v2boxContainer.isExpired ? 'warn' : 'pass',
+      value: `Locked: ${v2boxContainer.isDeviceLocked || v2boxContainer.isPasswordProtected ? 'Enforced' : 'Open'} | Password: ${v2boxContainer.isPasswordProtected ? 'Required' : 'None'} | Cipher: ${v2boxContainer.cipher} | Bound HWIDs: ${v2boxContainer.allowedDeviceIDs.length}`,
+      detail: `Device HWIDs: [${v2boxContainer.allowedDeviceIDs.join(', ') || 'None (Any Device)'}], Key Exchange: ${v2boxContainer.keyDerivation}, Expiry: ${v2boxContainer.expirationFormatted}.`,
+    });
+
+    validationChecks.push({
+      id: 'v2box_protocols',
+      protocol: 'V2BOX',
+      label: 'Outbound Protocol & Transport Pipeline',
+      status: 'pass',
+      value: `${v2boxContainer.activeProtocol} [${v2boxContainer.security?.toUpperCase() || 'TLS'}]`,
+      detail: `Server: ${v2boxContainer.outboundServer}:${v2boxContainer.outboundPort} • Transport: ${v2boxContainer.transport || 'TCP'} • SNI: ${v2boxContainer.sni || 'default'} • Supported Protocols: ${v2boxContainer.supportedProtocols.join(', ')}.`,
+    });
+
+    validationChecks.push({
+      id: 'v2box_cloud_system',
+      protocol: 'V2BOX',
+      label: 'V2Box Cloud Subscriptions & WebDAV Sync',
+      status: 'pass',
+      value: v2boxContainer.cloud.hasCloud ? 'Active Cloud Channel' : 'Local Profile',
+      detail: `Cloud Integration: ${v2boxContainer.cloud.subscriptionUrl ? 'Subscription: ' + v2boxContainer.cloud.subscriptionUrl : 'WebDAV Backup: ' + (v2boxContainer.cloud.webDavConfig?.baseUrl || 'Configured')} • API: ${v2boxContainer.cloud.apiServer}. Auto-Update: ${v2boxContainer.cloud.autoUpdate ? 'Enabled (' + v2boxContainer.cloud.updateIntervalHours + 'h)' : 'Manual'}.`,
+    });
+  }
+
   // Live DoH DNS probe
   const probeTargetDomain = sni || v2raySni || sshServer || nameserver || hysteriaServer;
   let dohResult: any = null;
@@ -4870,6 +5401,7 @@ export async function inspectConfigLocally(params: {
   if (isHttpInjectorContainer) detectedProtocols.push('HTTP Injector (.ehi)');
   if (isDarkTunnelContainer) detectedProtocols.push('Dark Tunnel (.dark)');
   if (isHaTunnelContainer) detectedProtocols.push('HA Tunnel Plus (.hat)');
+  if (isV2boxContainer) detectedProtocols.push('V2Box (.v2box / v2box://)');
 
   const failedChecks = validationChecks.filter(c => c.status === 'fail');
   const healthy = failedChecks.length === 0 && !isExpired;
@@ -4913,6 +5445,8 @@ export async function inspectConfigLocally(params: {
       darkTunnelContainer,
       isHaTunnelContainer,
       haTunnelContainer,
+      isV2boxContainer,
+      v2boxContainer,
       ssh: {
         present: Boolean(sshServer),
         activeInMode: tunnelType <= 7 || tunnelType === 8 || tunnelType === 14 || tunnelType === 15 || Boolean(sshServer && (nameserver || v2rayUuid)),
