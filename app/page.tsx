@@ -1150,7 +1150,7 @@ export default function ConfigInspectorPage() {
               if (importedFileInfo) setImportedFileInfo(null);
             }}
             placeholder="Paste Cloud Config UUID, V2Box URI (v2box://, chain://), CREEBINJ token, Dark Tunnel URI (darktunnel://), share URL (vless://, vmess://, ssc://), or drag & drop a config file (.v2box, .dark, .twt, .creeb, .hc, .npvs, .tnl, .ehi)..."
-            className="w-full rounded-xl bg-slate-950/95 border-2 border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/40 focus:outline-none px-3.5 sm:px-4 py-2.5 text-xs sm:text-sm text-white font-mono placeholder-slate-400 resize-y min-h-[85px] leading-relaxed transition shadow-inner"
+            className="input-textarea-modern"
           />
         </div>
 
@@ -1167,7 +1167,7 @@ export default function ConfigInspectorPage() {
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
                 placeholder="Passphrase (optional)"
-                className="bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none w-full sm:w-48 font-medium"
+                className="input-passphrase-modern"
               />
             </div>
 
