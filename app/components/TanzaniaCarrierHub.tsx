@@ -407,14 +407,14 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
             <button
               type="button"
               onClick={() => setActiveTab('carrier')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 cursor-pointer ${
                 activeTab === 'carrier'
-                  ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
-                  : 'bg-slate-950/60 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                  ? 'bg-gradient-to-r from-sky-500 to-indigo-500 text-slate-950 font-black shadow-lg shadow-sky-500/30'
+                  : 'carrier-card-unselected text-slate-300 hover:text-white'
               }`}
             >
               <span>🇹🇿 By Carrier Network</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-900/40 font-semibold">
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${activeTab === 'carrier' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-900 text-slate-200 border border-slate-700'}`}>
                 4 Operators
               </span>
             </button>
@@ -422,14 +422,14 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
             <button
               type="button"
               onClick={() => setActiveTab('all_files')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 cursor-pointer ${
                 activeTab === 'all_files'
-                  ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
-                  : 'bg-slate-950/60 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                  ? 'bg-gradient-to-r from-sky-500 to-indigo-500 text-slate-950 font-black shadow-lg shadow-sky-500/30'
+                  : 'carrier-card-unselected text-slate-300 hover:text-white'
               }`}
             >
               <span>⚡ All Active VPN Files &amp; Clouds</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/60 font-semibold">
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${activeTab === 'all_files' ? 'bg-slate-950/20 text-slate-950' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}`}>
                 {allActiveFilesCombined.length} Active
               </span>
             </button>
@@ -437,22 +437,22 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
             <button
               type="button"
               onClick={() => setActiveTab('add_new')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'add_new'
-                  ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/20'
-                  : 'bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 border border-indigo-800/50'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-black shadow-lg shadow-indigo-500/30'
+                  : 'carrier-card-unselected text-indigo-300 hover:text-white'
               }`}
             >
               <span>+ Add &amp; Auto-Inspect</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping" />
             </button>
           </div>
 
           {/* Alert Message upon Adding */}
           {addSuccessMessage && (
-            <div className="bg-emerald-950/50 border border-emerald-700/60 text-emerald-300 px-3 py-2 rounded-xl text-xs flex items-center gap-2 animate-fadeIn">
+            <div className="bg-emerald-950 border border-emerald-600 text-emerald-300 px-3 py-2 rounded-xl text-xs flex items-center gap-2 animate-fadeIn shadow-lg shadow-emerald-500/20">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{addSuccessMessage}</span>
+              <span className="font-semibold">{addSuccessMessage}</span>
             </div>
           )}
 
@@ -460,7 +460,7 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
           {activeTab === 'carrier' && (
             <div className="space-y-4">
               {/* Carrier Selector Tab Bar */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 {TANZANIA_CARRIERS.map((carrier) => {
                   const isSelected = carrier.id === selectedCarrierId;
                   return (
@@ -468,20 +468,24 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                       key={carrier.id}
                       type="button"
                       onClick={() => setSelectedCarrierId(carrier.id)}
-                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
                         isSelected
-                          ? `${carrier.pillClass} ring-2 ring-sky-400/50 shadow-lg scale-[1.01]`
-                          : 'bg-slate-950/50 border-slate-800 hover:border-slate-700 hover:bg-slate-800/40 opacity-75'
+                          ? `${carrier.pillClass} ring-2 ring-sky-400 shadow-xl scale-[1.01]`
+                          : 'carrier-card-unselected opacity-85 hover:opacity-100'
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold text-white">{carrier.name}</span>
+                        <span className="text-xs sm:text-sm font-extrabold text-white tracking-wide">{carrier.name}</span>
                         <span
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: carrier.brandColor }}
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{
+                            backgroundColor: carrier.brandColor,
+                            boxShadow: isSelected ? `0 0 10px ${carrier.brandColor}` : undefined
+                          }}
                         />
                       </div>
-                      <span className="text-[10px] text-slate-300 font-mono mt-1">
+                      <span className="text-[10px] text-slate-300 font-mono mt-1.5 flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-slate-400" />
                         {carrier.badge}
                       </span>
                     </button>
@@ -490,16 +494,21 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
               </div>
 
               {/* Active Carrier Specification Banner */}
-              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: activeCarrier.brandColor }} />
-                  <span className="font-bold text-white text-xs">{activeCarrier.name} Network Specification</span>
-                  <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+              <div className="carrier-card-unselected rounded-xl p-3 sm:p-3.5 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className="w-3 h-3 rounded-full shrink-0"
+                    style={{ backgroundColor: activeCarrier.brandColor, boxShadow: `0 0 10px ${activeCarrier.brandColor}` }}
+                  />
+                  <span className="font-extrabold text-white text-xs sm:text-sm tracking-wide">
+                    {activeCarrier.name} Network Specification
+                  </span>
+                  <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
                     MCC-MNC: {activeCarrier.mccMnc}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-[11px] font-mono text-slate-300">
-                  <span>Primary DNS: <strong className="text-sky-300">{activeCarrier.primaryDns}</strong></span>
+                  <span>Primary DNS: <strong className="text-cyan-300">{activeCarrier.primaryDns}</strong></span>
                   <span>Alt DNS: <strong className="text-slate-400">{activeCarrier.secondaryDns}</strong></span>
                 </div>
               </div>
@@ -507,11 +516,11 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
               {/* Host Lines Section with Real-Time DoH Ping */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-                    Active {activeCarrier.name} Host Lines &amp; SNI Domains ({carrierHostLines.length})
+                  <span className="text-xs font-extrabold text-slate-100 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                    <span>Active {activeCarrier.name} Host Lines &amp; SNI Domains ({carrierHostLines.length})</span>
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono">
+                  <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
                     Click "Use Host" to test in inspector
                   </span>
                 </div>
@@ -522,16 +531,16 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                     return (
                       <div
                         key={hl.id || idx}
-                        className="bg-slate-950/80 border border-slate-800 hover:border-sky-500/40 rounded-xl p-3 transition space-y-2 flex flex-col justify-between"
+                        className="carrier-card-unselected rounded-xl p-3.5 transition space-y-2.5 flex flex-col justify-between"
                       >
                         <div>
-                          <div className="flex items-center justify-between gap-1 mb-1">
+                          <div className="flex items-center justify-between gap-1 mb-1.5">
                             <div className="flex items-center gap-1.5">
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-sky-950/60 text-sky-300 border border-sky-800/50">
+                              <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider bg-sky-950 text-sky-300 border border-sky-800">
                                 {hl.category}
                               </span>
                               {hl.isCustom && (
-                                <span className="px-1 py-0.2 rounded text-[8px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+                                <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-amber-950 text-amber-300 border border-amber-700">
                                   AUTO-ADDED
                                 </span>
                               )}
@@ -539,36 +548,36 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
 
                             {/* Real-Time DoH Health Badge */}
                             {health?.status === 'active' && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950/70 text-emerald-300 border border-emerald-700/50 flex items-center gap-1">
+                              <span className="px-2 py-0.5 rounded text-[9px] font-mono font-extrabold bg-emerald-950 text-emerald-300 border border-emerald-700 flex items-center gap-1 shadow-sm shadow-emerald-500/20">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                                 {health.ips?.[0] || 'Active'} • {health.latencyMs}ms
                               </span>
                             )}
                             {health?.status === 'probing' && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono text-sky-400 bg-sky-950 animate-pulse border border-sky-800">
+                              <span className="px-2 py-0.5 rounded text-[9px] font-mono text-sky-300 bg-sky-950 animate-pulse border border-sky-700">
                                 Probing DoH...
                               </span>
                             )}
                             {health?.status === 'offline' && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono text-rose-400 bg-rose-950/70 border border-rose-800/50">
+                              <span className="px-2 py-0.5 rounded text-[9px] font-mono text-rose-300 bg-rose-950 border border-rose-800">
                                 Offline / No A-Record
                               </span>
                             )}
                             {!health && (
-                              <span className="text-[10px] font-mono text-emerald-400 font-semibold">
+                              <span className="text-[10px] font-mono text-emerald-400 font-bold">
                                 Port {hl.recommendedPort} • {hl.tunnelMethod}
                               </span>
                             )}
                           </div>
 
-                          <code className="text-xs font-mono font-bold text-white break-all block">
+                          <code className="text-xs font-mono font-bold text-white break-all block tracking-wide">
                             {hl.domain}
                           </code>
-                          <div className="flex flex-wrap gap-1 mt-1.5">
+                          <div className="flex flex-wrap gap-1 mt-2">
                             {hl.protocols.map((proto, pIdx) => (
                               <span
                                 key={pIdx}
-                                className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-900 text-slate-300 border border-slate-800"
+                                className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800"
                               >
                                 {proto}
                               </span>
@@ -576,25 +585,25 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 pt-2 border-t border-slate-900 mt-2">
+                        <div className="flex items-center gap-2 pt-2.5 border-t border-slate-800 mt-2">
                           <button
                             type="button"
                             onClick={() => handleApplyHost(hl.domain)}
-                            className="flex-1 py-1 px-2 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 text-xs font-bold border border-sky-500/40 cursor-pointer transition text-center"
+                            className="flex-1 py-1.5 px-2.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 text-xs font-extrabold border border-sky-500/50 cursor-pointer transition text-center shadow-sm shadow-sky-500/10"
                           >
                             Use Host
                           </button>
                           <button
                             type="button"
                             onClick={() => handleCopy(hl.domain, `hl-${idx}`)}
-                            className="py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 cursor-pointer transition"
+                            className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 cursor-pointer transition"
                           >
                             {copiedKey === `hl-${idx}` ? 'Copied' : 'Copy'}
                           </button>
                           <button
                             type="button"
                             onClick={() => handleCopy(hl.samplePayload, `pl-${idx}`)}
-                            className="py-1 px-2 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 text-xs font-semibold border border-indigo-500/30 cursor-pointer transition"
+                            className="py-1.5 px-2.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 text-xs font-bold border border-indigo-500/40 cursor-pointer transition"
                             title="Copy standard HTTP [crlf] payload"
                           >
                             {copiedKey === `pl-${idx}` ? 'Copied' : 'Payload'}
@@ -603,7 +612,7 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                             <button
                               type="button"
                               onClick={(e) => handleRemoveCustomHost(hl.id!, e)}
-                              className="py-1 px-1.5 text-rose-400 hover:text-rose-300 text-[10px]"
+                              className="py-1.5 px-2 text-rose-400 hover:text-rose-300 text-xs font-bold"
                               title="Remove custom host"
                             >
                               ✕
@@ -618,36 +627,36 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
 
               {/* Carrier Templates */}
               <div className="space-y-2">
-                <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-                  Verified {activeCarrier.name} Profile Files ({carrierTemplates.length})
+                <span className="text-xs font-extrabold text-slate-100 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                  <span>Verified {activeCarrier.name} Profile Files ({carrierTemplates.length})</span>
                 </span>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {carrierTemplates.map((tpl) => (
                     <div
                       key={tpl.id}
-                      className="bg-slate-950/80 border border-indigo-950 hover:border-indigo-500/40 rounded-xl p-3 transition flex flex-col justify-between"
+                      className="carrier-card-unselected rounded-xl p-3.5 transition flex flex-col justify-between"
                     >
                       <div>
-                        <div className="flex items-center justify-between gap-1 mb-1">
-                          <span className="font-bold text-xs text-white truncate">{tpl.title}</span>
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-indigo-950 text-indigo-300 border border-indigo-800/60">
+                        <div className="flex items-center justify-between gap-1 mb-1.5">
+                          <span className="font-extrabold text-xs sm:text-sm text-white truncate tracking-wide">{tpl.title}</span>
+                          <span className="px-2 py-0.5 rounded text-[9px] font-mono font-extrabold bg-indigo-950 text-indigo-300 border border-indigo-700">
                             {tpl.format}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-300 line-clamp-2">{tpl.description}</p>
-                        <div className="flex items-center justify-between text-[10px] font-mono text-sky-400 mt-1">
-                          <span>Protocol: {tpl.protocol}</span>
-                          <span className="text-emerald-400 font-semibold">Expires: {tpl.expiryDate}</span>
+                        <p className="text-[11px] text-slate-300 line-clamp-2 leading-relaxed">{tpl.description}</p>
+                        <div className="flex items-center justify-between text-[10px] font-mono mt-2 bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                          <span className="text-cyan-300">Protocol: {tpl.protocol}</span>
+                          <span className="text-emerald-400 font-bold">Expires: {tpl.expiryDate}</span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 pt-2.5 mt-2 border-t border-slate-900">
+                      <div className="flex items-center gap-2 pt-2.5 mt-2 border-t border-slate-800">
                         <button
                           type="button"
                           onClick={() => handleApplyTemplate(tpl)}
-                          className="flex-1 py-1.5 px-2.5 rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 hover:opacity-90 text-white text-xs font-bold cursor-pointer transition shadow-md shadow-sky-500/20 flex items-center justify-center gap-1"
+                          className="flex-1 py-1.5 px-3 rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 hover:opacity-95 text-white text-xs font-black cursor-pointer transition shadow-md shadow-sky-500/25 flex items-center justify-center gap-1.5"
                         >
                           <span>Inspect Live</span>
                           <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -657,7 +666,7 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                         <button
                           type="button"
                           onClick={() => handleDownloadFile(tpl)}
-                          className="py-1.5 px-2.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-xs font-semibold border border-emerald-500/30 cursor-pointer transition"
+                          className="py-1.5 px-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 cursor-pointer transition shadow-sm shadow-emerald-500/15"
                           title={`Download ${tpl.fileName}`}
                         >
                           {copiedKey === `dl-${tpl.id}` ? 'Downloaded!' : 'Download'}
@@ -665,7 +674,7 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                         <button
                           type="button"
                           onClick={() => handleCopy(tpl.rawConfig, `tpl-${tpl.id}`)}
-                          className="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 cursor-pointer transition"
+                          className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 cursor-pointer transition"
                         >
                           {copiedKey === `tpl-${tpl.id}` ? 'Copied' : 'Copy'}
                         </button>
@@ -673,7 +682,7 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                           <button
                             type="button"
                             onClick={(e) => handleRemoveCustomFile(tpl.id, e)}
-                            className="py-1.5 px-1.5 text-rose-400 hover:text-rose-300 text-xs"
+                            className="py-1.5 px-2 text-rose-400 hover:text-rose-300 text-xs font-bold"
                             title="Remove custom file"
                           >
                             ✕
@@ -692,8 +701,9 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
             <div className="space-y-3">
               {/* Filter by Format Bar */}
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-xs font-bold text-slate-200">
-                  Filter Active VPN Configurations ({filteredActiveFiles.length})
+                <span className="text-xs font-extrabold text-slate-100 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span>Active VPN Configurations ({filteredActiveFiles.length})</span>
                 </span>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {[
@@ -706,10 +716,10 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                       key={f.id}
                       type="button"
                       onClick={() => setFormatFilter(f.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                         formatFilter === f.id
-                          ? 'bg-sky-500 text-slate-950 font-bold'
-                          : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                          ? 'bg-sky-500 text-slate-950 font-black shadow-md shadow-sky-500/20'
+                          : 'carrier-card-unselected text-slate-300 hover:text-white'
                       }`}
                     >
                       {f.label}
@@ -723,44 +733,44 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                 {filteredActiveFiles.map((file) => (
                   <div
                     key={file.id}
-                    className="bg-slate-950/80 border border-slate-800 hover:border-sky-500/40 rounded-xl p-3 transition space-y-2 flex flex-col justify-between"
+                    className="carrier-card-unselected rounded-xl p-3.5 transition space-y-2.5 flex flex-col justify-between"
                   >
                     <div>
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-900 text-slate-300 border border-slate-800">
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-slate-900 text-slate-200 border border-slate-700">
                           {file.carrierName}
                         </span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-950 text-sky-300 border border-sky-800/60">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-extrabold bg-sky-950 text-sky-300 border border-sky-700">
                           {file.format}
                         </span>
                       </div>
-                      <h3 className="text-xs font-extrabold text-white truncate">{file.title}</h3>
-                      <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{file.description}</p>
-                      <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mt-2 bg-slate-900/60 p-2 rounded-lg border border-slate-800/80">
-                        <span>SNI: <strong className="text-sky-300">{file.hostLineUsed}</strong></span>
-                        <span className="text-emerald-400 font-semibold">{file.protocol}</span>
+                      <h3 className="text-xs sm:text-sm font-extrabold text-white truncate tracking-wide">{file.title}</h3>
+                      <p className="text-[11px] text-slate-300 line-clamp-1 mt-1">{file.description}</p>
+                      <div className="flex items-center justify-between text-[10px] font-mono text-slate-300 mt-2 bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                        <span>SNI: <strong className="text-cyan-300">{file.hostLineUsed}</strong></span>
+                        <span className="text-emerald-400 font-bold">{file.protocol}</span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 pt-2 border-t border-slate-900">
+                    <div className="flex items-center gap-2 pt-2.5 border-t border-slate-800">
                       <button
                         type="button"
                         onClick={() => handleApplyTemplate(file)}
-                        className="flex-1 py-1.5 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 text-xs font-bold border border-sky-500/40 cursor-pointer transition text-center"
+                        className="flex-1 py-1.5 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 text-xs font-black border border-sky-500/50 cursor-pointer transition text-center shadow-sm shadow-sky-500/10"
                       >
                         Inspect Live
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDownloadFile(file)}
-                        className="py-1.5 px-3 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-xs font-semibold border border-emerald-500/30 cursor-pointer transition"
+                        className="py-1.5 px-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold border border-emerald-500/40 cursor-pointer transition shadow-sm shadow-emerald-500/15"
                       >
                         {copiedKey === `dl-${file.id}` ? 'Saved' : 'Download'}
                       </button>
                       <button
                         type="button"
                         onClick={() => handleCopy(file.rawConfig, `f-${file.id}`)}
-                        className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 cursor-pointer transition"
+                        className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 cursor-pointer transition"
                       >
                         {copiedKey === `f-${file.id}` ? 'Copied' : 'Copy'}
                       </button>
@@ -773,24 +783,24 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
 
           {/* TAB 3: DYNAMIC ADD & AUTO-INSPECT DRAWER */}
           {activeTab === 'add_new' && (
-            <div className="bg-slate-950/70 border border-indigo-900/40 rounded-xl p-4 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div className="carrier-card-unselected rounded-xl p-4 sm:p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
                 <div>
                   <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-pulse" />
                     <span>Add New Host Line, Config File or Cloud Subscription</span>
                   </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-[11px] text-slate-300 mt-0.5">
                     Newly added items are verified live, attached to carrier monitoring, and persisted in your browser
                   </p>
                 </div>
 
-                <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800">
+                <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800">
                   <button
                     type="button"
                     onClick={() => setAddMode('host')}
-                    className={`px-2.5 py-1 rounded text-xs font-bold cursor-pointer transition ${
-                      addMode === 'host' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black cursor-pointer transition ${
+                      addMode === 'host' ? 'bg-sky-500 text-slate-950 shadow-sm' : 'text-slate-300 hover:text-white'
                     }`}
                   >
                     Host Line
@@ -798,8 +808,8 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                   <button
                     type="button"
                     onClick={() => setAddMode('file_cloud')}
-                    className={`px-2.5 py-1 rounded text-xs font-bold cursor-pointer transition ${
-                      addMode === 'file_cloud' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black cursor-pointer transition ${
+                      addMode === 'file_cloud' ? 'bg-sky-500 text-slate-950 shadow-sm' : 'text-slate-300 hover:text-white'
                     }`}
                   >
                     File / Cloud URI
@@ -809,29 +819,29 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
 
               {/* Mode A: Add Host Line */}
               {addMode === 'host' && (
-                <div className="space-y-3">
+                <div className="space-y-3.5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      <label className="text-[11px] font-extrabold text-slate-200 block mb-1">
                         Domain / Host Line
                       </label>
                       <input
                         type="text"
                         value={newDomain}
                         onChange={(e) => setNewDomain(e.target.value)}
-                        placeholder="e.g. portal.vodacom.co.tz or udsm.ac.tz"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                        placeholder="e.g. portal.vodacom.co.tz or yas.co.tz"
+                        className="w-full bg-[#030712] border border-sky-500/30 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40"
                       />
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      <label className="text-[11px] font-extrabold text-slate-200 block mb-1">
                         Target Mobile Carrier
                       </label>
                       <select
                         value={newCarrierId}
                         onChange={(e) => setNewCarrierId(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                        className="w-full bg-[#030712] border border-sky-500/30 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 cursor-pointer"
                       >
                         {TANZANIA_CARRIERS.map((c) => (
                           <option key={c.id} value={c.id}>
@@ -844,25 +854,25 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      <label className="text-[11px] font-extrabold text-slate-200 block mb-1">
                         Recommended Port
                       </label>
                       <input
                         type="number"
                         value={newPort}
                         onChange={(e) => setNewPort(parseInt(e.target.value) || 443)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                        className="w-full bg-[#030712] border border-sky-500/30 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40"
                       />
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      <label className="text-[11px] font-extrabold text-slate-200 block mb-1">
                         Tunnel Method
                       </label>
                       <select
                         value={newTunnelMethod}
                         onChange={(e) => setNewTunnelMethod(e.target.value as any)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                        className="w-full bg-[#030712] border border-sky-500/30 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 cursor-pointer"
                       >
                         <option value="TLS / SNI Spoof">TLS / SNI Spoof</option>
                         <option value="CDN WebSocket">CDN WebSocket</option>
@@ -871,13 +881,13 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      <label className="text-[11px] font-extrabold text-slate-200 block mb-1">
                         Category
                       </label>
                       <select
                         value={newCategory}
                         onChange={(e) => setNewCategory(e.target.value as any)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                        className="w-full bg-[#030712] border border-sky-500/30 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 cursor-pointer"
                       >
                         <option value="SelfCare & Portal">SelfCare &amp; Portal</option>
                         <option value="FinTech & M-Pesa">FinTech &amp; M-Pesa</option>
@@ -891,9 +901,10 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                     <button
                       type="button"
                       onClick={handleAddNewHost}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:opacity-90 text-white text-xs font-bold cursor-pointer transition shadow-md shadow-sky-500/20"
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:opacity-95 text-white text-xs font-black cursor-pointer transition shadow-md shadow-sky-500/25 flex items-center gap-2"
                     >
-                      Probe Live &amp; Add Host to Sync
+                      <span className="w-2 h-2 rounded-full bg-cyan-300 animate-pulse" />
+                      <span>Probe Live &amp; Add Host to Sync</span>
                     </button>
                   </div>
                 </div>
@@ -901,10 +912,10 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
 
               {/* Mode B: Add File / Cloud Subscription */}
               {addMode === 'file_cloud' && (
-                <div className="space-y-3">
+                <div className="space-y-3.5">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      <label className="text-[11px] font-extrabold text-slate-200 block mb-1">
                         Configuration Title / Alias
                       </label>
                       <input
@@ -912,18 +923,18 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                         value={newFileTitle}
                         onChange={(e) => setNewFileTitle(e.target.value)}
                         placeholder="e.g. Vodacom VIP Cloud Tunnel"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                        className="w-full bg-[#030712] border border-sky-500/30 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40"
                       />
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      <label className="text-[11px] font-extrabold text-slate-200 block mb-1">
                         VPN Format
                       </label>
                       <select
                         value={newFileFormat}
                         onChange={(e) => setNewFileFormat(e.target.value as any)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                        className="w-full bg-[#030712] border border-sky-500/30 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 cursor-pointer"
                       >
                         <option value=".v2box">V2Box (.v2box / v2box://)</option>
                         <option value=".nm">NetMod Syna (.nm)</option>
@@ -934,13 +945,13 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      <label className="text-[11px] font-extrabold text-slate-200 block mb-1">
                         Associated Carrier
                       </label>
                       <select
                         value={newCarrierId}
                         onChange={(e) => setNewCarrierId(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                        className="w-full bg-[#030712] border border-sky-500/30 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40 cursor-pointer"
                       >
                         {TANZANIA_CARRIERS.map((c) => (
                           <option key={c.id} value={c.id}>
@@ -952,7 +963,7 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                    <label className="text-[11px] font-extrabold text-slate-200 block mb-1">
                       Raw Configuration String, URI or Cloud Subscription Link
                     </label>
                     <textarea
@@ -960,7 +971,7 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                       value={newFileRawConfig}
                       onChange={(e) => setNewFileRawConfig(e.target.value)}
                       placeholder="Paste vless://, vmess://, netmod://, .nm Base64, or Cloud UUID..."
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                      className="w-full bg-[#030712] border border-sky-500/30 rounded-xl p-3 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/40"
                     />
                   </div>
 
@@ -968,9 +979,10 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                     <button
                       type="button"
                       onClick={handleAddNewFile}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-sky-600 hover:opacity-90 text-white text-xs font-bold cursor-pointer transition shadow-md shadow-emerald-500/20"
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-sky-600 hover:opacity-95 text-white text-xs font-black cursor-pointer transition shadow-md shadow-emerald-500/25 flex items-center gap-2"
                     >
-                      Auto-Inspect &amp; Add File to Repository
+                      <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
+                      <span>Auto-Inspect &amp; Add File to Repository</span>
                     </button>
                   </div>
                 </div>
