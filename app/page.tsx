@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { inspectConfigLocally } from './inspector-engine';
+import TanzaniaCarrierHub from './components/TanzaniaCarrierHub';
 
 type ValidationCheck = {
   id: string;
@@ -1022,6 +1023,15 @@ export default function ConfigInspectorPage() {
           </button>
         </div>
       </header>
+
+      {/* Tanzania Carrier Presets & Host Line Sync Hub */}
+      <TanzaniaCarrierHub
+        onLoadConfig={(cfg) => {
+          setInput(cfg);
+          handleInspect(cfg);
+        }}
+        onRunInspect={() => handleInspect()}
+      />
 
       {/* Input Section (Supports Drag & Drop for .twt, .tut, .ssc, .npvs, .npvt, .hat, .hc, .tnl, .ehi, .creeb, .dark) */}
       <section
