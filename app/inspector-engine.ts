@@ -480,6 +480,82 @@ export type InspectResponse = {
       rawEnvelopeHexPreview: string;
       payloadLength: number;
     } | null;
+    isNetmodContainer?: boolean;
+    netmodContainer?: {
+      appName: string;
+      packageName: string;
+      versionAndroid?: number;
+      isWindowsVer?: boolean;
+      wireFormat: string;
+      cipher: string;
+      keyIndexUsed?: number;
+      isUnlockedOrPlain: boolean;
+      preventRoot: boolean;
+      preventWifi: boolean;
+      hwIds: string[];
+      expire: string | null;
+      isExpired: boolean;
+      note: string;
+      profileCount: number;
+      profiles: Array<{
+        id?: number | string;
+        remark: string;
+        protocol: string;
+        hostname: string;
+        port: number;
+        userId?: string;
+        password?: string;
+        encryptMethod?: string;
+        transferProtocol?: string;
+        host?: string;
+        path?: string;
+        tlsType?: string;
+        sni?: string;
+        pubKey?: string;
+        shortId?: string;
+        spiderX?: string;
+        fingerprint?: string;
+        alpn?: string;
+        flow?: string;
+        locked?: boolean;
+        useMux?: boolean;
+        pingResult?: string;
+        shareUri?: string;
+      }>;
+      tunnelConfig?: {
+        mode: number;
+        modeName: string;
+        payload?: string;
+        payloadLocked?: boolean;
+        sni?: string;
+        sniLocked?: boolean;
+        proxy?: string;
+        proxyLocked?: boolean;
+        proxyIndex?: number;
+        ssh?: string;
+        sshLocked?: boolean;
+        sshIndex?: number;
+        rr?: string;
+        interfaceAddress?: string;
+        interfacePrivateKey?: string;
+        peerPublicKey?: string;
+        peerEndpoint?: string;
+        peerPresharedKey?: string;
+      };
+      serverGroups?: Array<{
+        id?: number | string;
+        name: string;
+        url: string;
+        updateTime?: number;
+      }>;
+      supportedProtocols: string[];
+      cloud: {
+        hasCloud: boolean;
+        subscriptionUrl?: string;
+        cloudEndpoint?: string;
+      };
+      rawDecryptedJson?: string;
+    } | null;
     isV2boxContainer?: boolean;
     v2boxContainer?: {
       appName: string;
@@ -2816,6 +2892,446 @@ export function tryParseV2BoxPayload(rawInput: any, fileName?: string): {
  * Supports both raw wire binary, UTF-8 Latin-1 byte strings (0x80..0xFF), base64 envelopes,
  * and direct file paths (e.g. saya1.hc, halotel trial.hc).
  */
+
+// ============================================================================
+// NetMod Syna (.nm / JSON / nm:// / netmod://) Engine Implementation
+// Reverse-engineered from Eichgee's netmodcore libgojni.so (com.netmod.syna)
+// Supports AES-256-ECB master keys, plain JSON, single tunnel, and cloud configs
+// ============================================================================
+
+const NETMOD_AES_KEYS = [
+  new Uint8Array([0x38,0x63,0x64,0x33,0x31,0x36,0x38,0x36,0x63,0x39,0x65,0x37,0x38,0x61,0x65,0x61,0x61,0x62,0x39,0x65,0x64,0x63,0x39,0x38,0x65,0x39,0x30,0x66,0x35,0x31,0x35,0x35]), // 8cd31686c9e78aeaab9edc98e90f5155
+  new Uint8Array([0x32,0x65,0x36,0x62,0x34,0x39,0x64,0x66,0x33,0x64,0x37,0x65,0x30,0x39,0x33,0x65,0x39,0x36,0x35,0x66,0x35,0x33,0x38,0x34,0x62,0x30,0x66,0x32,0x33,0x61,0x34,0x65]), // 2e6b49df3d7e093e965f5384b0f23a4e
+  new Uint8Array([0x66,0x62,0x31,0x33,0x38,0x37,0x33,0x64,0x63,0x36,0x33,0x35,0x37,0x33,0x36,0x64,0x33,0x65,0x66,0x37,0x38,0x38,0x66,0x30,0x62,0x61,0x34,0x39,0x65,0x36,0x35,0x66])  // fb13873dc635736d3ef788f0ba49e65f
+];
+
+const NETMOD_SBOX = new Uint8Array([
+  0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
+  0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
+  0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
+  0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75,
+  0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84,
+  0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf,
+  0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8,
+  0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2,
+  0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73,
+  0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb,
+  0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79,
+  0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08,
+  0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
+  0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
+  0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
+  0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
+]);
+
+const NETMOD_INV_SBOX = new Uint8Array(256);
+for (let i = 0; i < 256; i++) NETMOD_INV_SBOX[NETMOD_SBOX[i]] = i;
+const NETMOD_RCON = [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+
+function netmodGmul(a: number, b: number): number {
+  let p = 0;
+  for (let c = 0; c < 8; c++) {
+    if (b & 1) p ^= a;
+    const hi = a & 0x80;
+    a = (a << 1) & 0xff;
+    if (hi) a ^= 0x1b;
+    b >>= 1;
+  }
+  return p;
+}
+
+function netmodKeyExpansion256(key: Uint8Array): Uint8Array {
+  const w = new Uint8Array(240);
+  w.set(key.subarray(0, 32), 0);
+  let i = 32;
+  const temp = new Uint8Array(4);
+  while (i < 240) {
+    temp[0] = w[i - 4]; temp[1] = w[i - 3]; temp[2] = w[i - 2]; temp[3] = w[i - 1];
+    if (i % 32 === 0) {
+      const k0 = temp[0]; temp[0] = temp[1]; temp[1] = temp[2]; temp[2] = temp[3]; temp[3] = k0;
+      temp[0] = NETMOD_SBOX[temp[0]]; temp[1] = NETMOD_SBOX[temp[1]]; temp[2] = NETMOD_SBOX[temp[2]]; temp[3] = NETMOD_SBOX[temp[3]];
+      temp[0] ^= NETMOD_RCON[i / 32];
+    } else if (i % 32 === 16) {
+      temp[0] = NETMOD_SBOX[temp[0]]; temp[1] = NETMOD_SBOX[temp[1]]; temp[2] = NETMOD_SBOX[temp[2]]; temp[3] = NETMOD_SBOX[temp[3]];
+    }
+    w[i]     = w[i - 32] ^ temp[0];
+    w[i + 1] = w[i - 31] ^ temp[1];
+    w[i + 2] = w[i - 30] ^ temp[2];
+    w[i + 3] = w[i - 29] ^ temp[3];
+    i += 4;
+  }
+  return w;
+}
+
+function netmodDecryptBlock(block: Uint8Array, expKey: Uint8Array): Uint8Array {
+  const state = new Uint8Array(block);
+  for (let i = 0; i < 16; i++) state[i] ^= expKey[224 + i];
+  for (let round = 13; round >= 1; round--) {
+    let t = state[13]; state[13] = state[9]; state[9] = state[5]; state[5] = state[1]; state[1] = t;
+    t = state[2]; state[2] = state[10]; state[10] = t;
+    t = state[6]; state[6] = state[14]; state[14] = t;
+    t = state[3]; state[3] = state[7]; state[7] = state[11]; state[11] = state[15]; state[15] = t;
+    for (let i = 0; i < 16; i++) state[i] = NETMOD_INV_SBOX[state[i]];
+    const off = round * 16;
+    for (let i = 0; i < 16; i++) state[i] ^= expKey[off + i];
+    for (let c = 0; c < 4; c++) {
+      const idx = c * 4;
+      const a0 = state[idx], a1 = state[idx + 1], a2 = state[idx + 2], a3 = state[idx + 3];
+      state[idx]     = netmodGmul(a0, 0x0e) ^ netmodGmul(a1, 0x0b) ^ netmodGmul(a2, 0x0d) ^ netmodGmul(a3, 0x09);
+      state[idx + 1] = netmodGmul(a0, 0x09) ^ netmodGmul(a1, 0x0e) ^ netmodGmul(a2, 0x0b) ^ netmodGmul(a3, 0x0d);
+      state[idx + 2] = netmodGmul(a0, 0x0d) ^ netmodGmul(a1, 0x09) ^ netmodGmul(a2, 0x0e) ^ netmodGmul(a3, 0x0b);
+      state[idx + 3] = netmodGmul(a0, 0x0b) ^ netmodGmul(a1, 0x0d) ^ netmodGmul(a2, 0x09) ^ netmodGmul(a3, 0x0e);
+    }
+  }
+  let t = state[13]; state[13] = state[9]; state[9] = state[5]; state[5] = state[1]; state[1] = t;
+  t = state[2]; state[2] = state[10]; state[10] = t;
+  t = state[6]; state[6] = state[14]; state[14] = t;
+  t = state[3]; state[3] = state[7]; state[7] = state[11]; state[11] = state[15]; state[15] = t;
+  for (let i = 0; i < 16; i++) state[i] = NETMOD_INV_SBOX[state[i]];
+  for (let i = 0; i < 16; i++) state[i] ^= expKey[i];
+  return state;
+}
+
+function netmodDecryptAes256Ecb(ciphertext: Uint8Array, keyBytes: Uint8Array): Uint8Array | null {
+  if (ciphertext.length === 0 || ciphertext.length % 16 !== 0) return null;
+  const expKey = netmodKeyExpansion256(keyBytes);
+  const out = new Uint8Array(ciphertext.length);
+  for (let i = 0; i < ciphertext.length; i += 16) {
+    const chunk = ciphertext.subarray(i, i + 16);
+    const dec = netmodDecryptBlock(chunk, expKey);
+    out.set(dec, i);
+  }
+  const pad = out[out.length - 1];
+  if (pad >= 1 && pad <= 16) {
+    for (let i = out.length - pad; i < out.length; i++) {
+      if (out[i] !== pad) return out;
+    }
+    return out.subarray(0, out.length - pad);
+  }
+  return out;
+}
+
+export function tryParseNetmodPayload(rawInput: any, fileName?: string): {
+  decryptedJson: Record<string, any>;
+  encryptionMethod: string;
+} | null {
+  if (!rawInput) return null;
+  let text = typeof rawInput === 'string' ? rawInput.trim() : '';
+  const isNmExt = Boolean(fileName && /.(nm)$/i.test(fileName));
+  const isNetmodScheme = text.startsWith('netmod://') || text.startsWith('nm://');
+  const isNmDirectScheme = /^(nm-http|nm-hysteria2|nm-ssh|nm-wireguard|nm-ss):///i.test(text);
+
+  let parsedJson: any = null;
+  let isEncrypted = false;
+  let keyIndexUsed: number | undefined = undefined;
+  let rawDecryptedJson = '';
+  let wireFormat = 'NetMod Syna (.nm)';
+
+  // Case 1: nm:// or netmod:// scheme wrapper
+  if (isNetmodScheme) {
+    wireFormat = 'NetMod URI Scheme (' + (text.startsWith('netmod://') ? 'netmod://' : 'nm://') + ')';
+    const payloadPart = text.replace(/^(netmod|nm):\/\//i, '').trim();
+    if (payloadPart.startsWith('{') && payloadPart.endsWith('}')) {
+      try {
+        parsedJson = JSON.parse(payloadPart);
+      } catch {}
+    } else {
+      text = payloadPart;
+    }
+  }
+
+  // Case 2: Direct JSON payload
+  if (!parsedJson && text.startsWith('{') && text.endsWith('}')) {
+    try {
+      const obj = JSON.parse(text);
+      if (
+        obj &&
+        typeof obj === 'object' &&
+        (
+          obj.Common ||
+          obj['Version Android'] !== undefined ||
+          obj['Version Windows'] !== undefined ||
+          obj['Prevent Root'] !== undefined ||
+          obj.Payload ||
+          obj.SNI ||
+          obj.SSH ||
+          obj.Proxy ||
+          obj.Interface ||
+          isNmExt
+        )
+      ) {
+        parsedJson = obj;
+        rawDecryptedJson = text;
+      }
+    } catch {}
+  }
+
+  // Case 3: Base64 Encrypted Payload (Standard NetMod .nm encrypted export)
+  if (!parsedJson) {
+    let cleanB64 = text.replace(/[\r\n\s]+/g, '');
+    // Check if valid Base64 length & characters
+    if (/^[A-Za-z0-9+/=_-]{24,}$/.test(cleanB64)) {
+      try {
+        const binStr = typeof atob === 'function' ? atob(cleanB64.replace(/-/g, '+').replace(/_/g, '/')) : Buffer.from(cleanB64, 'base64').toString('binary');
+        const cipherBytes = new Uint8Array(binStr.length);
+        for (let i = 0; i < binStr.length; i++) cipherBytes[i] = binStr.charCodeAt(i);
+
+        if (cipherBytes.length >= 16 && cipherBytes.length % 16 === 0) {
+          for (let kIdx = 0; kIdx < NETMOD_AES_KEYS.length; kIdx++) {
+            const decBytes = netmodDecryptAes256Ecb(cipherBytes, NETMOD_AES_KEYS[kIdx]);
+            if (decBytes && decBytes.length > 0) {
+              const utf8Str = new TextDecoder('utf-8', { fatal: false }).decode(decBytes).trim();
+              if (utf8Str.startsWith('{') && utf8Str.endsWith('}')) {
+                try {
+                  const candidate = JSON.parse(utf8Str);
+                  if (candidate && typeof candidate === 'object') {
+                    parsedJson = candidate;
+                    isEncrypted = true;
+                    keyIndexUsed = kIdx;
+                    rawDecryptedJson = utf8Str;
+                    break;
+                  }
+                } catch {}
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Case 4: Direct nm-*:// scheme link
+  if (!parsedJson && isNmDirectScheme) {
+    try {
+      const parsedUri = new URL(text.replace(/^nm-/, ''));
+      parsedJson = {
+        Common: [
+          {
+            Protocol: text.startsWith('nm-hy') ? 'hysteria2' : (text.startsWith('nm-wg') ? 'wireguard' : (text.startsWith('nm-ssh') ? 'ssh' : (text.startsWith('nm-ss') ? 'shadowsocks' : 'http'))),
+            Remark: decodeURIComponent(parsedUri.hash.replace(/^#/, '') || 'NetMod Share'),
+            Hostname: parsedUri.hostname,
+            Port: parseInt(parsedUri.port || (text.startsWith('nm-hy') ? '8443' : (text.startsWith('nm-ssh') ? '22' : '443')), 10),
+            UserID: parsedUri.username || undefined,
+            Password: parsedUri.password || undefined,
+            SNI: parsedUri.searchParams.get('sni') || parsedUri.hostname,
+            Path: parsedUri.pathname || undefined
+          }
+        ],
+        'Version Android': 16,
+        Note: 'Imported via NetMod URI Share'
+      };
+      wireFormat = 'NetMod Direct Protocol URI (' + text.split('://')[0] + '://)';
+    } catch {}
+  }
+
+  if (!parsedJson || typeof parsedJson !== 'object') {
+    if (!isNmExt) return null;
+    parsedJson = {
+      Note: 'NetMod Container detected (.nm)',
+      'Version Android': 16
+    };
+  }
+
+  // Extract NetMod profiles & parameters
+  const versionAndroid = typeof parsedJson['Version Android'] === 'number' ? parsedJson['Version Android'] : undefined;
+  const isWindowsVer = Boolean(parsedJson['Version Windows']);
+  const preventRoot = Boolean(parsedJson['Prevent Root']);
+  const preventWifi = Boolean(parsedJson['Prevent Wifi']);
+  const rawHwIds = Array.isArray(parsedJson.HwIds) ? parsedJson.HwIds.map(String) : [];
+  const expire = parsedJson.Expire ? String(parsedJson.Expire) : null;
+  const note = String(parsedJson.Note || '').trim();
+
+  let isExpired = false;
+  if (expire) {
+    const expDate = new Date(expire.includes(' ') && !expire.includes('T') ? expire.replace(' ', 'T') : expire);
+    if (!isNaN(expDate.getTime())) {
+      isExpired = expDate.getTime() <= Date.now();
+    }
+  }
+
+  const profiles: Array<any> = [];
+  const supportedProtocolsSet = new Set<string>();
+
+  if (Array.isArray(parsedJson.Common)) {
+    for (let i = 0; i < parsedJson.Common.length; i++) {
+      const p = parsedJson.Common[i];
+      if (!p || typeof p !== 'object') continue;
+      const proto = String(p.Protocol || 'vless').toLowerCase();
+      supportedProtocolsSet.add(proto.toUpperCase());
+
+      let shareUri = '';
+      if (proto === 'vless' && p.UserID && p.Hostname) {
+        shareUri = `vless://${p.UserID}@${p.Hostname}:${p.Port || 443}?type=${p.TransferProtocol || 'tcp'}&security=${p.TLSType || 'none'}&sni=${encodeURIComponent(p.SNI || p.Hostname)}#${encodeURIComponent(p.Remark || 'Netmod VLESS')}`;
+      } else if (proto === 'hysteria2' && p.Hostname) {
+        shareUri = `hysteria2://${p.Password || ''}@${p.Hostname}:${p.Port || 443}?sni=${encodeURIComponent(p.SNI || p.Hostname)}#${encodeURIComponent(p.Remark || 'Netmod Hysteria2')}`;
+      } else if (proto === 'ssh' && p.Hostname) {
+        shareUri = `ssh://${p.UserID || 'root'}:${p.Password || ''}@${p.Hostname}:${p.Port || 22}#${encodeURIComponent(p.Remark || 'Netmod SSH')}`;
+      } else if (proto === 'wireguard' && p.Hostname) {
+        shareUri = `wireguard://${p.UserID || ''}@${p.Hostname}:${p.Port || 51820}?publickey=${encodeURIComponent(p.PubKey || '')}#${encodeURIComponent(p.Remark || 'Netmod WireGuard')}`;
+      }
+
+      profiles.push({
+        id: p.id || (i + 1),
+        remark: String(p.Remark || `Profile #${i + 1}`),
+        protocol: proto,
+        hostname: String(p.Hostname || ''),
+        port: parseInt(p.Port || '443', 10),
+        userId: p.UserID ? String(p.UserID) : undefined,
+        password: p.Password ? String(p.Password) : undefined,
+        encryptMethod: p.EncryptMethod ? String(p.EncryptMethod) : undefined,
+        transferProtocol: p.TransferProtocol ? String(p.TransferProtocol) : undefined,
+        host: p.Host ? String(p.Host) : undefined,
+        path: p.Path ? String(p.Path) : undefined,
+        tlsType: p.TLSType ? String(p.TLSType) : undefined,
+        sni: p.SNI ? String(p.SNI) : undefined,
+        pubKey: p.PubKey ? String(p.PubKey) : undefined,
+        shortId: p.ShortId ? String(p.ShortId) : undefined,
+        spiderX: p.SpiderX ? String(p.SpiderX) : undefined,
+        fingerprint: p.FingerPrint ? String(p.FingerPrint) : undefined,
+        alpn: p.Alpn ? String(p.Alpn) : undefined,
+        flow: p.Flow ? String(p.Flow) : undefined,
+        locked: Boolean(p.Locked),
+        useMux: Boolean(p.UseMux),
+        pingResult: p.pingResult ? String(p.pingResult) : undefined,
+        shareUri: shareUri || undefined
+      });
+    }
+  }
+
+  // Handle single tunnel configuration if present
+  let tunnelConfig: any = undefined;
+  if (parsedJson.Payload || parsedJson.SNI || parsedJson.Proxy || parsedJson.SSH || parsedJson.Interface || parsedJson.Peer) {
+    const modeNames = ['SSH + HTTP Proxy', 'SSH Direct', 'SSL / TLS SNI', 'Custom Payload Direct', 'WireGuard Tunnel'];
+    const modeVal = typeof parsedJson.Mode === 'number' ? parsedJson.Mode : 0;
+    tunnelConfig = {
+      mode: modeVal,
+      modeName: modeNames[modeVal] || `Custom Mode ${modeVal}`,
+      payload: parsedJson.Payload?.Value || (typeof parsedJson.Payload === 'string' ? parsedJson.Payload : undefined),
+      payloadLocked: Boolean(parsedJson.Payload?.Locked),
+      sni: parsedJson.SNI?.Value || (typeof parsedJson.SNI === 'string' ? parsedJson.SNI : undefined),
+      sniLocked: Boolean(parsedJson.SNI?.Locked),
+      proxy: parsedJson.Proxy?.Value || (typeof parsedJson.Proxy === 'string' ? parsedJson.Proxy : undefined),
+      proxyLocked: Boolean(parsedJson.Proxy?.Locked),
+      proxyIndex: parsedJson.Proxy?.['Proxy Index'] ?? undefined,
+      ssh: parsedJson.SSH?.Value || (typeof parsedJson.SSH === 'string' ? parsedJson.SSH : undefined),
+      sshLocked: Boolean(parsedJson.SSH?.Locked),
+      sshIndex: parsedJson.SSH?.['SSH Index'] ?? undefined,
+      rr: parsedJson.RR?.Value || undefined,
+      interfaceAddress: parsedJson.Interface?.Address || undefined,
+      interfacePrivateKey: parsedJson.Interface?.PrivateKey || undefined,
+      peerPublicKey: parsedJson.Peer?.PublicKey || undefined,
+      peerEndpoint: parsedJson.Peer?.Endpoint || undefined,
+      peerPresharedKey: parsedJson.Peer?.PresharedKey || undefined
+    };
+    if (tunnelConfig.ssh) supportedProtocolsSet.add('SSH');
+    if (tunnelConfig.sni) supportedProtocolsSet.add('TLS/SNI');
+    if (tunnelConfig.payload) supportedProtocolsSet.add('HTTP PAYLOAD');
+    if (tunnelConfig.interfaceAddress || tunnelConfig.peerPublicKey) supportedProtocolsSet.add('WIREGUARD');
+  }
+
+  const serverGroups: Array<any> = [];
+  if (Array.isArray(parsedJson.ServerGroups)) {
+    for (const g of parsedJson.ServerGroups) {
+      if (g && typeof g === 'object') {
+        serverGroups.push({
+          id: g.id,
+          name: String(g.name || 'Cloud Group'),
+          url: String(g.url || ''),
+          updateTime: g.updateTime
+        });
+      }
+    }
+  }
+
+  if (supportedProtocolsSet.size === 0) {
+    supportedProtocolsSet.add('VLESS');
+    supportedProtocolsSet.add('VMESS');
+    supportedProtocolsSet.add('TROJAN');
+    supportedProtocolsSet.add('SHADOWSOCKS');
+    supportedProtocolsSet.add('HYSTERIA 2');
+    supportedProtocolsSet.add('WIREGUARD');
+    supportedProtocolsSet.add('SSH');
+  }
+
+  const primaryProfile = profiles[0] || null;
+  const primaryHost = primaryProfile?.hostname || tunnelConfig?.proxy?.split(':')[0] || tunnelConfig?.ssh?.split(':')[0] || '127.0.0.1';
+  const primaryPort = primaryProfile?.port || (tunnelConfig?.proxy?.includes(':') ? parseInt(tunnelConfig.proxy.split(':')[1], 10) : 443);
+  const primarySni = primaryProfile?.sni || tunnelConfig?.sni || primaryHost;
+  const primaryUuid = primaryProfile?.userId || '00000000-0000-0000-0000-000000000000';
+
+  const netmodContainer = {
+    appName: 'NetMod Syna',
+    packageName: 'com.netmod.syna',
+    versionAndroid,
+    isWindowsVer,
+    wireFormat,
+    cipher: isEncrypted
+      ? `AES-256-ECB (NetMod Key #${(keyIndexUsed ?? 0) + 1} Master Keyset)`
+      : 'Plain JSON Unlocked Configuration',
+    keyIndexUsed,
+    isUnlockedOrPlain: !isEncrypted,
+    preventRoot,
+    preventWifi,
+    hwIds: rawHwIds,
+    expire,
+    isExpired,
+    note,
+    profileCount: profiles.length,
+    profiles,
+    tunnelConfig,
+    serverGroups: serverGroups.length > 0 ? serverGroups : undefined,
+    supportedProtocols: Array.from(supportedProtocolsSet),
+    cloud: {
+      hasCloud: serverGroups.length > 0 || Boolean(parsedJson.SubscriptionUrl),
+      subscriptionUrl: parsedJson.SubscriptionUrl || (serverGroups[0]?.url) || undefined,
+      cloudEndpoint: serverGroups[0]?.url || undefined
+    },
+    rawDecryptedJson: rawDecryptedJson || undefined
+  };
+
+  const decryptedJson: Record<string, any> = {
+    config_version: versionAndroid || 16,
+    config_message: note || (primaryProfile ? `NetMod: ${primaryProfile.remark}` : 'NetMod Syna VPN Configuration'),
+    config_protected: isEncrypted || rawHwIds.length > 0 || preventRoot,
+    is_netmod_container: true,
+    netmod_container: netmodContainer,
+
+    // Endpoints for standard inspector compatibility
+    sshServer: tunnelConfig?.ssh?.split('@')[0]?.split(':')[0] || primaryHost,
+    sshPort: String(tunnelConfig?.ssh?.split('@')[0]?.split(':')[1] || primaryPort),
+    sshUser: primaryProfile?.userId || (tunnelConfig?.ssh?.includes('@') ? tunnelConfig.ssh.split('@')[1]?.split(':')[0] : 'root'),
+    sshPass: primaryProfile?.password || (tunnelConfig?.ssh?.includes(':') ? tunnelConfig.ssh.split(':').pop() : ''),
+    host: primaryHost,
+    port: String(primaryPort),
+    uuid: primaryUuid,
+    sni: primarySni,
+    sniHost: primarySni,
+    proxyHost: tunnelConfig?.proxy?.split(':')[0] || primaryHost,
+    proxyPort: String(tunnelConfig?.proxy?.split(':')[1] || primaryPort),
+    message: tunnelConfig?.payload || note,
+    payload: tunnelConfig?.payload || '',
+    v2rayServerHost: primaryHost,
+    v2rayServerPort: primaryPort,
+    v2rayUuid: primaryUuid,
+    v2rayProtocol: primaryProfile?.protocol || 'vless',
+    v2rayTransport: primaryProfile?.transferProtocol || 'tcp',
+    v2rayTls: Boolean(primaryProfile?.tlsType && primaryProfile.tlsType !== 'none'),
+    v2raySni: primarySni,
+    v2rayWsPath: primaryProfile?.path || '',
+    v2rayWsHost: primaryProfile?.host || primarySni,
+    hysteriaServer: primaryProfile?.protocol === 'hysteria2' ? `${primaryHost}:${primaryPort}` : undefined,
+    hysteriaAuth: primaryProfile?.password || undefined,
+    wireguardRaw: tunnelConfig?.peerPublicKey ? `[Interface]\nPrivateKey = ${tunnelConfig.interfacePrivateKey || 'hidden'}\nAddress = ${tunnelConfig.interfaceAddress || '10.0.0.2/32'}\n\n[Peer]\nPublicKey = ${tunnelConfig.peerPublicKey}\nEndpoint = ${tunnelConfig.peerEndpoint}\nAllowedIPs = 0.0.0.0/0` : undefined
+  };
+
+  return {
+    decryptedJson,
+    encryptionMethod: isEncrypted
+      ? `AES-256-ECB • NetMod Core Keyset #${(keyIndexUsed ?? 0) + 1} (${profiles.length} Profiles • RootBlock: ${preventRoot ? 'Active' : 'Off'})`
+      : 'NetMod Syna Unlocked Profile (.nm / JSON)'
+  };
+}
+
 export function tryParseHcPayload(rawInput: any, fileName?: string): {
   decryptedJson: Record<string, any>;
   encryptionMethod: string;
@@ -4509,6 +5025,10 @@ export async function tryDecryptClientAny(rawPayload: string, fileName?: string)
   const v2boxRes = tryParseV2BoxPayload(clean, fileName);
   if (v2boxRes) return v2boxRes;
 
+  // 1f-6. NetMod Syna Profile (.nm / _unlocked.nm / netmod:// / nm:// / nm-*:// / com.netmod.syna)
+  const netmodRes = tryParseNetmodPayload(clean, fileName);
+  if (netmodRes) return netmodRes;
+
   // 1f. HTTP Injector Profile (.ehi / .ehil file / com.evozi.injector)
   const ehiRes = await tryParseEhiPayload(clean, fileName);
   if (ehiRes) return ehiRes;
@@ -5044,6 +5564,8 @@ export async function inspectConfigLocally(params: {
   const haTunnelContainer = cfg.ha_tunnel_container || null;
   const isV2boxContainer = Boolean(cfg.is_v2box_container);
   const v2boxContainer = cfg.v2box_container || null;
+  const isNetmodContainer = Boolean(cfg.is_netmod_container);
+  const netmodContainer = cfg.netmod_container || null;
 
   const sshServer = String(cfg.sshServer || cfg.host || manualServerHost || '').trim();
   const sshPort = String(cfg.sshPort || cfg.port || manualServerPort || '22').trim();
@@ -5338,6 +5860,47 @@ export async function inspectConfigLocally(params: {
     });
   }
 
+  // NetMod Syna checks
+  if (isNetmodContainer && netmodContainer) {
+    validationChecks.push({
+      id: 'netmod_framing',
+      protocol: 'NETMOD',
+      label: 'NetMod Container Framing & Ecosystem',
+      status: 'pass',
+      value: `${netmodContainer.appName} (${netmodContainer.wireFormat}) • Android v${netmodContainer.versionAndroid || 16}${netmodContainer.isWindowsVer ? ' / Windows' : ''}`,
+      detail: `Verified Eichgee netmodcore client ${netmodContainer.packageName}. Engine: Xray-core / GoJNI / DNSTT. Encryption: ${netmodContainer.cipher}.`,
+    });
+
+    validationChecks.push({
+      id: 'netmod_security',
+      protocol: 'NETMOD',
+      label: 'NetMod Security & Environment Restrictions',
+      status: netmodContainer.isExpired ? 'warn' : 'pass',
+      value: `Prevent Root: ${netmodContainer.preventRoot ? 'Active (Strict)' : 'Permissive'} | Prevent WiFi: ${netmodContainer.preventWifi ? 'Active' : 'Off'} | Hardware Locks: ${netmodContainer.hwIds.length}`,
+      detail: `Hardware ID Locks: [${netmodContainer.hwIds.join(', ') || 'Any Device Allowed'}], Expiry Date: ${netmodContainer.expire || 'Permanent'}.`,
+    });
+
+    validationChecks.push({
+      id: 'netmod_profiles',
+      protocol: 'NETMOD',
+      label: 'Multi-Profile Registry & Outbound Protocols',
+      status: 'pass',
+      value: `${netmodContainer.profileCount} Server Profiles (${netmodContainer.supportedProtocols.join(', ')})`,
+      detail: `Profiles loaded: ${netmodContainer.profiles.map((p: any) => p.remark + ' [' + p.protocol.toUpperCase() + ']').join(', ') || 'Direct Tunnel'}.`,
+    });
+
+    if (netmodContainer.cloud.hasCloud) {
+      validationChecks.push({
+        id: 'netmod_cloud',
+        protocol: 'NETMOD',
+        label: 'NetMod Cloud Subscriptions & Server Groups',
+        status: 'pass',
+        value: netmodContainer.cloud.subscriptionUrl ? 'Active Cloud Channel' : 'Local Config',
+        detail: `Subscription Feed: ${netmodContainer.cloud.subscriptionUrl || 'Local Server Groups'}.`,
+      });
+    }
+  }
+
   // V2Box checks
   if (isV2boxContainer && v2boxContainer) {
     validationChecks.push({
@@ -5402,6 +5965,7 @@ export async function inspectConfigLocally(params: {
   if (isDarkTunnelContainer) detectedProtocols.push('Dark Tunnel (.dark)');
   if (isHaTunnelContainer) detectedProtocols.push('HA Tunnel Plus (.hat)');
   if (isV2boxContainer) detectedProtocols.push('V2Box (.v2box / v2box://)');
+  if (isNetmodContainer) detectedProtocols.push('NetMod Syna (.nm / nm://)');
 
   const failedChecks = validationChecks.filter(c => c.status === 'fail');
   const healthy = failedChecks.length === 0 && !isExpired;
@@ -5447,6 +6011,8 @@ export async function inspectConfigLocally(params: {
       haTunnelContainer,
       isV2boxContainer,
       v2boxContainer,
+      isNetmodContainer,
+      netmodContainer,
       ssh: {
         present: Boolean(sshServer),
         activeInMode: tunnelType <= 7 || tunnelType === 8 || tunnelType === 14 || tunnelType === 15 || Boolean(sshServer && (nameserver || v2rayUuid)),

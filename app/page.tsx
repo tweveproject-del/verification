@@ -482,6 +482,82 @@ type InspectResponse = {
       rawEnvelopeHexPreview: string;
       payloadLength: number;
     } | null;
+        isNetmodContainer?: boolean;
+    netmodContainer?: {
+      appName: string;
+      packageName: string;
+      versionAndroid?: number;
+      isWindowsVer?: boolean;
+      wireFormat: string;
+      cipher: string;
+      keyIndexUsed?: number;
+      isUnlockedOrPlain: boolean;
+      preventRoot: boolean;
+      preventWifi: boolean;
+      hwIds: string[];
+      expire: string | null;
+      isExpired: boolean;
+      note: string;
+      profileCount: number;
+      profiles: Array<{
+        id?: number | string;
+        remark: string;
+        protocol: string;
+        hostname: string;
+        port: number;
+        userId?: string;
+        password?: string;
+        encryptMethod?: string;
+        transferProtocol?: string;
+        host?: string;
+        path?: string;
+        tlsType?: string;
+        sni?: string;
+        pubKey?: string;
+        shortId?: string;
+        spiderX?: string;
+        fingerprint?: string;
+        alpn?: string;
+        flow?: string;
+        locked?: boolean;
+        useMux?: boolean;
+        pingResult?: string;
+        shareUri?: string;
+      }>;
+      tunnelConfig?: {
+        mode: number;
+        modeName: string;
+        payload?: string;
+        payloadLocked?: boolean;
+        sni?: string;
+        sniLocked?: boolean;
+        proxy?: string;
+        proxyLocked?: boolean;
+        proxyIndex?: number;
+        ssh?: string;
+        sshLocked?: boolean;
+        sshIndex?: number;
+        rr?: string;
+        interfaceAddress?: string;
+        interfacePrivateKey?: string;
+        peerPublicKey?: string;
+        peerEndpoint?: string;
+        peerPresharedKey?: string;
+      };
+      serverGroups?: Array<{
+        id?: number | string;
+        name: string;
+        url: string;
+        updateTime?: number;
+      }>;
+      supportedProtocols: string[];
+      cloud: {
+        hasCloud: boolean;
+        subscriptionUrl?: string;
+        cloudEndpoint?: string;
+      };
+      rawDecryptedJson?: string;
+    } | null;
     isV2boxContainer?: boolean;
     v2boxContainer?: {
       appName: string;
@@ -693,7 +769,7 @@ export default function ConfigInspectorPage() {
   const [customCloudUrl, setCustomCloudUrl] = useState('');
   const [httpWeakProtocolTab, setHttpWeakProtocolTab] = useState<'openvpn' | 'ssh' | 'v2ray' | 'hysteria' | 'slowdns' | 'wireguard'>('openvpn');
   const [activeProtocolTab, setActiveProtocolTab] = useState<
-    'auto' | 'http_injector' | 'opentunnel' | 'hc' | 'npvs' | 'ssc' | 'creeb' | 'httpweak' | 'darktunnel' | 'hatunnel' | 'v2box' | 'v2ray' | 'dnstt' | 'ssh_proxy' | 'hysteria2' | 'wireguard'
+    'auto' | 'http_injector' | 'opentunnel' | 'hc' | 'npvs' | 'ssc' | 'creeb' | 'httpweak' | 'darktunnel' | 'hatunnel' | 'v2box' | 'netmod' | 'v2ray' | 'dnstt' | 'ssh_proxy' | 'hysteria2' | 'wireguard'
   >('auto');
   const [importedFileInfo, setImportedFileInfo] = useState<{ name: string; size: number } | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -882,6 +958,8 @@ export default function ConfigInspectorPage() {
     activeProtocolTab === 'hatunnel' || (activeProtocolTab === 'auto' && Boolean(cd?.haTunnelContainer));
   const showV2BoxCard =
     activeProtocolTab === 'v2box' || (activeProtocolTab === 'auto' && Boolean(cd?.v2boxContainer));
+  const showNetmodCard =
+    activeProtocolTab === 'netmod' || (activeProtocolTab === 'auto' && Boolean(cd?.netmodContainer));
   const showCreebCard =
     activeProtocolTab === 'creeb' || (activeProtocolTab === 'auto' && Boolean(cd?.creebContainer));
   const showV2RayCard =
@@ -1066,6 +1144,15 @@ export default function ConfigInspectorPage() {
               <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.v2box • v2box:// • chain://</div>
             </div>
 
+            {/* 6d. NetMod Syna */}
+            <div className="p-2 rounded-lg vpn-pill-netmod transition hover:scale-[1.02]">
+              <div className="font-bold text-sky-200 text-[11px] truncate flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0"></span>
+                NetMod Syna
+              </div>
+              <div className="text-[10px] font-mono text-slate-300 mt-0.5 truncate">.nm • netmod:// • Eichgee AES-256</div>
+            </div>
+
             {/* 7. SSH Custom */}
             <div className="p-2 rounded-lg vpn-pill-sshcustom transition hover:scale-[1.02]">
               <div className="font-bold text-yellow-200 text-[11px] truncate flex items-center gap-1.5">
@@ -1149,7 +1236,7 @@ export default function ConfigInspectorPage() {
               setInput(e.target.value);
               if (importedFileInfo) setImportedFileInfo(null);
             }}
-            placeholder="Paste Cloud Config UUID, V2Box URI (v2box://, chain://), CREEBINJ token, Dark Tunnel URI (darktunnel://), share URL (vless://, vmess://, ssc://), or drag & drop a config file (.v2box, .dark, .twt, .creeb, .hc, .npvs, .tnl, .ehi)..."
+            placeholder="Paste Cloud Config UUID, NetMod URI (nm://, netmod://), V2Box URI (v2box://, chain://), CREEBINJ token, Dark Tunnel URI (darktunnel://), share URL (vless://, vmess://, ssc://), or drag & drop a config file (.v2box, .dark, .twt, .creeb, .hc, .npvs, .tnl, .ehi)..."
             className="input-textarea-modern"
           />
         </div>
@@ -1562,6 +1649,7 @@ export default function ConfigInspectorPage() {
                 ...(cd.npvsContainer ? [{ id: 'npvs', label: 'NPV Tunnel (.npvs / .npvt)', active: true }] : []),
                 ...(cd.haTunnelContainer ? [{ id: 'hatunnel', label: 'HA Tunnel (.hat)', active: true }] : []),
                 ...(cd.v2boxContainer ? [{ id: 'v2box', label: 'V2Box (.v2box)', active: true }] : []),
+                ...(cd.netmodContainer ? [{ id: 'netmod', label: 'NetMod (.nm)', active: true }] : []),
                 ...(cd.sscContainer ? [{ id: 'ssc', label: 'SSH Custom (Ssc://)', active: true }] : []),
                 ...(cd.httpWeakContainer ? [{ id: 'httpweak', label: 'HTTP Weak / Tweak (.ht)', active: true }] : []),
                 ...(cd.darkTunnelContainer ? [{ id: 'darktunnel', label: 'Dark Tunnel (.dark)', active: true }] : []),
@@ -3533,6 +3621,367 @@ export default function ConfigInspectorPage() {
                       className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-600 text-white font-bold text-xs cursor-pointer hover:opacity-90 transition shadow-md shadow-amber-500/20"
                     >
                       Run Live Verification Probe for {cd.haTunnelContainer.profileName}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              
+              {/* ==================== NETMOD SYNA (.NM / NM://) MULTI-PROFILE & TUNNEL INSPECTOR CARD ==================== */}
+              {showNetmodCard && cd.netmodContainer && (
+                <div className="bg-slate-900/80 border border-sky-500/40 rounded-2xl p-4 sm:p-5 space-y-4">
+                  {/* Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-2.5">
+                    <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shrink-0 shadow-sm shadow-sky-400/50" />
+                      <h3 className="text-base font-bold text-white truncate max-w-full">
+                        NetMod Syna Engine (<code className="text-sky-300 break-all">{cd.netmodContainer.appName}</code>)
+                      </h3>
+                      <span className="text-[11px] font-mono text-sky-300/90 bg-sky-950/50 border border-sky-800/60 px-2 py-0.5 rounded-md">
+                        {cd.netmodContainer.packageName} • {cd.netmodContainer.isWindowsVer ? 'Windows' : `Android API v${cd.netmodContainer.versionAndroid || 16}`}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
+                      {cd.netmodContainer.profiles.length > 0 && cd.netmodContainer.profiles[0].shareUri && (
+                        <button
+                          type="button"
+                          onClick={() => copyText('netmodShare', cd.netmodContainer!.profiles[0].shareUri || '')}
+                          className="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 hover:bg-sky-500/25 text-xs font-semibold border border-sky-500/30 cursor-pointer transition"
+                        >
+                          {copiedKey === 'netmodShare' ? 'Copied URI!' : 'Copy Share URI'}
+                        </button>
+                      )}
+                      {cd.netmodContainer.profiles.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => copyText('netmodHost', `${cd.netmodContainer!.profiles[0].hostname}:${cd.netmodContainer!.profiles[0].port}`)}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25 text-xs font-semibold border border-indigo-500/30 cursor-pointer transition"
+                        >
+                          {copiedKey === 'netmodHost' ? 'Copied Host!' : 'Copy Host:Port'}
+                        </button>
+                      )}
+                      <span className="px-2.5 py-1 rounded-lg bg-sky-950/60 text-sky-300 border border-sky-800/60 text-xs font-bold uppercase tracking-wider">
+                        {cd.netmodContainer.profileCount > 0 ? `${cd.netmodContainer.profileCount} Profile${cd.netmodContainer.profileCount > 1 ? 's' : ''}` : cd.netmodContainer.tunnelConfig?.modeName || 'Tunnel Mode'}
+                      </span>
+                      <span
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                          cd.netmodContainer.preventRoot || cd.netmodContainer.hwIds.length > 0
+                            ? 'bg-amber-950/40 text-amber-300 border-amber-800/50'
+                            : 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50'
+                        }`}
+                      >
+                        {cd.netmodContainer.preventRoot ? 'Root Protected' : (cd.netmodContainer.hwIds.length > 0 ? 'HWID Locked' : 'Unlocked')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Note Banner if present */}
+                  {cd.netmodContainer.note && (
+                    <div className="bg-sky-950/30 border border-sky-800/40 rounded-xl p-3 text-xs text-sky-200">
+                      <span className="font-bold text-sky-400 mr-2">Config Note:</span>
+                      <span>{cd.netmodContainer.note}</span>
+                    </div>
+                  )}
+
+                  {/* Cryptographic Security & Protection Matrix */}
+                  <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 sm:p-4 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                        NetMod Cryptographic Security & Hardware Protection Matrix
+                      </span>
+                      <span className="text-[11px] font-mono text-sky-400">
+                        {cd.netmodContainer.cipher} {cd.netmodContainer.keyIndexUsed !== undefined ? `(Eichgee Master Key #${cd.netmodContainer.keyIndexUsed + 1})` : ''}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-2.5">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block">Root Protection</span>
+                        <span className={`font-mono font-bold mt-0.5 block ${cd.netmodContainer.preventRoot ? 'text-amber-400' : 'text-emerald-400'}`}>
+                          {cd.netmodContainer.preventRoot ? 'Active (Block Root)' : 'Off (Allowed)'}
+                        </span>
+                      </div>
+                      <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-2.5">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block">WiFi Restriction</span>
+                        <span className={`font-mono font-bold mt-0.5 block ${cd.netmodContainer.preventWifi ? 'text-amber-400' : 'text-emerald-400'}`}>
+                          {cd.netmodContainer.preventWifi ? 'Active (Mobile Only)' : 'Off (Any Network)'}
+                        </span>
+                      </div>
+                      <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-2.5">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block">HWID Device Binding</span>
+                        <span className={`font-mono font-bold mt-0.5 block ${cd.netmodContainer.hwIds.length > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                          {cd.netmodContainer.hwIds.length > 0 ? `${cd.netmodContainer.hwIds.length} Bound Device(s)` : 'Any Device (Unlocked)'}
+                        </span>
+                      </div>
+                      <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-2.5">
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block">Config Expiration</span>
+                        <span className={`font-mono font-bold mt-0.5 block ${cd.netmodContainer.isExpired ? 'text-rose-400' : (cd.netmodContainer.expire ? 'text-emerald-400' : 'text-slate-400')}`}>
+                          {cd.netmodContainer.expire || 'No Expiration Set'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {cd.netmodContainer.hwIds.length > 0 && (
+                      <div className="bg-slate-900/80 border border-amber-900/40 rounded-lg p-2.5 mt-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 block mb-1">
+                          Locked Hardware Fingerprints ({cd.netmodContainer.hwIds.length})
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {cd.netmodContainer.hwIds.map((hw, idx) => (
+                            <code key={idx} className="bg-amber-950/40 border border-amber-800/50 text-amber-200 text-[11px] font-mono px-2 py-0.5 rounded">
+                              {hw}
+                            </code>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Multi-Profiles List */}
+                  {cd.netmodContainer.profiles.length > 0 && (
+                    <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 sm:p-4 space-y-3">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                          NetMod Multi-Protocol Profiles ({cd.netmodContainer.profiles.length})
+                        </span>
+                        <span className="text-[11px] font-mono text-indigo-400">
+                          {cd.netmodContainer.supportedProtocols.join(' • ')}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        {cd.netmodContainer.profiles.map((p, idx) => (
+                          <div key={idx} className="bg-slate-900/75 border border-slate-800/80 hover:border-sky-500/30 rounded-xl p-3 transition space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/60 pb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-sky-950/70 text-sky-300 border border-sky-800/60">
+                                  {p.protocol}
+                                </span>
+                                <span className="font-bold text-white text-xs">
+                                  {p.remark || `Profile #${idx + 1}`}
+                                </span>
+                                {p.locked && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-950/60 text-amber-400 border border-amber-800/50">
+                                    LOCKED
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs text-sky-300 font-semibold">
+                                  {p.hostname}:{p.port}
+                                </span>
+                                {p.shareUri && (
+                                  <button
+                                    type="button"
+                                    onClick={() => copyText(`pShare${idx}`, p.shareUri || '')}
+                                    className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 text-[10px] font-semibold border border-sky-500/30 cursor-pointer transition"
+                                  >
+                                    {copiedKey === `pShare${idx}` ? 'Copied!' : 'Copy Link'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                              <div>
+                                <span className="text-slate-500 text-[10px] uppercase block">Transport / Network</span>
+                                <span className="font-mono text-slate-200 font-semibold">
+                                  {(p.transferProtocol || 'tcp').toUpperCase()} {p.tlsType ? `(${p.tlsType.toUpperCase()})` : ''}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 text-[10px] uppercase block">SNI / Host Header</span>
+                                <span className="font-mono text-sky-200 font-semibold truncate block">
+                                  {p.sni || p.host || 'None'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 text-[10px] uppercase block">WebSocket Path</span>
+                                <span className="font-mono text-indigo-300 font-semibold truncate block">
+                                  {p.path || '/'}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 text-[10px] uppercase block">Auth / User ID</span>
+                                <span className="font-mono text-slate-300 truncate block">
+                                  {p.userId || p.password || 'None'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {(p.pubKey || p.shortId || p.fingerprint || p.alpn) && (
+                              <div className="bg-slate-950/50 rounded-lg p-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-mono border border-slate-800/50">
+                                {p.pubKey && (
+                                  <span className="text-amber-300 truncate max-w-[240px]">
+                                    <strong className="text-slate-400">PubKey:</strong> {p.pubKey}
+                                  </span>
+                                )}
+                                {p.shortId && (
+                                  <span className="text-amber-300">
+                                    <strong className="text-slate-400">ShortId:</strong> {p.shortId}
+                                  </span>
+                                )}
+                                {p.fingerprint && (
+                                  <span className="text-cyan-300">
+                                    <strong className="text-slate-400">FP:</strong> {p.fingerprint}
+                                  </span>
+                                )}
+                                {p.alpn && (
+                                  <span className="text-emerald-300">
+                                    <strong className="text-slate-400">ALPN:</strong> {p.alpn}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Single Tunnel Config (Direct / SSH / HTTP Custom / WireGuard) */}
+                  {cd.netmodContainer.tunnelConfig && (
+                    <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 sm:p-4 space-y-3">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                          NetMod Tunnel Configuration ({cd.netmodContainer.tunnelConfig.modeName})
+                        </span>
+                        <span className="text-[11px] font-mono text-emerald-400">
+                          Mode {cd.netmodContainer.tunnelConfig.mode}
+                        </span>
+                      </div>
+
+                      {cd.netmodContainer.tunnelConfig.payload && (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase font-bold text-slate-400">
+                              HTTP Custom / Injector Payload {cd.netmodContainer.tunnelConfig.payloadLocked ? '(LOCKED)' : ''}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => copyText('netmodPayload', cd.netmodContainer!.tunnelConfig!.payload || '')}
+                              className="text-[10px] text-sky-400 hover:text-sky-300"
+                            >
+                              {copiedKey === 'netmodPayload' ? 'Copied' : 'Copy Payload'}
+                            </button>
+                          </div>
+                          <pre className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-mono text-emerald-300 whitespace-pre-wrap break-all max-h-28 overflow-y-auto">
+                            {cd.netmodContainer.tunnelConfig.payload}
+                          </pre>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                        {cd.netmodContainer.tunnelConfig.sni && (
+                          <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-2.5">
+                            <span className="text-slate-400 text-[10px] uppercase font-bold block">
+                              SSL Spoof / SNI {cd.netmodContainer.tunnelConfig.sniLocked ? '(Locked)' : ''}
+                            </span>
+                            <span className="font-mono text-sky-300 font-semibold truncate block mt-0.5">
+                              {cd.netmodContainer.tunnelConfig.sni}
+                            </span>
+                          </div>
+                        )}
+                        {cd.netmodContainer.tunnelConfig.proxy && (
+                          <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-2.5">
+                            <span className="text-slate-400 text-[10px] uppercase font-bold block">
+                              Remote Proxy {cd.netmodContainer.tunnelConfig.proxyLocked ? '(Locked)' : ''}
+                            </span>
+                            <span className="font-mono text-amber-300 font-semibold truncate block mt-0.5">
+                              {cd.netmodContainer.tunnelConfig.proxy}
+                            </span>
+                          </div>
+                        )}
+                        {cd.netmodContainer.tunnelConfig.ssh && (
+                          <div className="bg-slate-900/70 border border-slate-800 rounded-lg p-2.5">
+                            <span className="text-slate-400 text-[10px] uppercase font-bold block">
+                              SSH Endpoint {cd.netmodContainer.tunnelConfig.sshLocked ? '(Locked)' : ''}
+                            </span>
+                            <span className="font-mono text-indigo-300 font-semibold truncate block mt-0.5">
+                              {cd.netmodContainer.tunnelConfig.ssh}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {cd.netmodContainer.tunnelConfig.peerPublicKey && (
+                        <div className="bg-slate-900/80 border border-indigo-900/40 rounded-lg p-2.5 space-y-1 text-[11px] font-mono">
+                          <span className="text-[10px] uppercase font-bold text-indigo-300 block">WireGuard Tunnel Configuration</span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
+                            <div><strong className="text-slate-500">Peer:</strong> {cd.netmodContainer.tunnelConfig.peerEndpoint}</div>
+                            <div><strong className="text-slate-500">Address:</strong> {cd.netmodContainer.tunnelConfig.interfaceAddress || '10.0.0.2/32'}</div>
+                            <div className="truncate"><strong className="text-slate-500">Peer Key:</strong> {cd.netmodContainer.tunnelConfig.peerPublicKey}</div>
+                            <div className="truncate"><strong className="text-slate-500">Priv Key:</strong> {cd.netmodContainer.tunnelConfig.interfacePrivateKey || 'Protected'}</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Server Groups / Cloud Subscriptions */}
+                  {((cd.netmodContainer.serverGroups && cd.netmodContainer.serverGroups.length > 0) || cd.netmodContainer.cloud.hasCloud) && (
+                    <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 sm:p-4 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                          NetMod Cloud Server Groups & Subscriptions
+                        </span>
+                        <span className="text-[11px] font-mono text-cyan-400">
+                          {cd.netmodContainer.serverGroups?.length || 0} Group(s)
+                        </span>
+                      </div>
+
+                      {cd.netmodContainer.serverGroups && cd.netmodContainer.serverGroups.map((grp, gIdx) => (
+                        <div key={gIdx} className="bg-slate-900/70 border border-slate-800 rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div>
+                            <span className="font-bold text-white block">{grp.name}</span>
+                            <span className="font-mono text-[11px] text-cyan-300 break-all">{grp.url}</span>
+                          </div>
+                          {grp.url && (
+                            <button
+                              type="button"
+                              onClick={() => copyText(`grpUrl${gIdx}`, grp.url)}
+                              className="px-2 py-1 rounded bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 text-[10px] font-semibold border border-cyan-500/30 cursor-pointer transition"
+                            >
+                              {copiedKey === `grpUrl${gIdx}` ? 'Copied' : 'Copy URL'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Raw Decrypted JSON View */}
+                  {cd.netmodContainer.rawDecryptedJson && (
+                    <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 sm:p-4 space-y-2">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                        <span>NetMod Decrypted Configuration JSON</span>
+                        <button
+                          type="button"
+                          onClick={() => copyText('netmodJson', cd.netmodContainer!.rawDecryptedJson!)}
+                          className="px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-300 hover:bg-sky-500/25 text-[10px] font-semibold border border-sky-500/30 cursor-pointer transition"
+                        >
+                          {copiedKey === 'netmodJson' ? 'Copied JSON!' : 'Copy Decrypted JSON'}
+                        </button>
+                      </div>
+                      <pre className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-mono text-sky-200 whitespace-pre max-h-48 overflow-auto">
+                        {cd.netmodContainer.rawDecryptedJson}
+                      </pre>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => handleInspect()}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 text-white font-bold text-xs cursor-pointer hover:opacity-90 transition shadow-md shadow-sky-500/20"
+                    >
+                      Run Live Verification Probe for {cd.netmodContainer.appName}
                     </button>
                   </div>
                 </div>
