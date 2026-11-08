@@ -5225,6 +5225,50 @@ const EMBEDDED_CLOUD_PAYLOADS: Record<string, string> = {
 };
 
 
+function normalizeCloudUrl(rawUrl: string): string {
+  let u = rawUrl.trim();
+  // Google Drive file view link -> direct stream download
+  const gDriveMatch = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)/i);
+  if (gDriveMatch) {
+    return `https://drive.google.com/uc?id=${gDriveMatch[1]}&export=download`;
+  }
+  // Dropbox share link -> dl=1 direct binary stream
+  if (/dropbox\.com\//i.test(u)) {
+    if (u.includes('dl=0')) return u.replace('dl=0', 'dl=1');
+    if (!u.includes('dl=1')) return u + (u.includes('?') ? '&dl=1' : '?dl=1');
+  }
+  // Pastebin web link -> raw link
+  const pastebinMatch = u.match(/pastebin\.com\/([a-zA-Z0-9]+)$/i);
+  if (pastebinMatch && pastebinMatch[1] !== 'raw') {
+    return `https://pastebin.com/raw/${pastebinMatch[1]}`;
+  }
+  // GitHub Gist web link -> raw usercontent gist
+  const gistMatch = u.match(/gist\.github\.com\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9]+)$/i);
+  if (gistMatch) {
+    return `https://gist.githubusercontent.com/${gistMatch[1]}/${gistMatch[2]}/raw`;
+  }
+  // Rentry.co web link -> raw link
+  const rentryMatch = u.match(/rentry\.co\/([a-zA-Z0-9_-]+)$/i);
+  if (rentryMatch && rentryMatch[1] !== 'raw') {
+    return `https://rentry.co/${rentryMatch[1]}/raw`;
+  }
+  return u;
+}
+
+async function checkWaybackArchive(url: string): Promise<string | null> {
+  try {
+    const wbRes = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`, {
+      signal: AbortSignal.timeout(4000),
+    });
+    if (wbRes.ok) {
+      const wbData = await wbRes.json();
+      const snapshotUrl = wbData?.archived_snapshots?.closest?.url;
+      if (snapshotUrl) return snapshotUrl;
+    }
+  } catch {}
+  return null;
+}
+
 /**
  * Robust multi-tier Cloud Config Resolver for TunnelTweak & Firebase RTDB.
  * Gracefully handles browser CORS via public gateways, embedded payloads, and fallback endpoints.
@@ -5245,7 +5289,7 @@ async function resolveCloudConfigPayload(uuid: string, customUrl?: string): Prom
   const cleanUuid = uuid.trim().toLowerCase();
   const rawKey = uuid.trim();
   const isTargetUrl = /^https?:\/\//i.test(customUrl?.trim() || rawKey);
-  const targetUrl = isTargetUrl ? (customUrl?.trim() || rawKey) : '';
+  const targetUrl = isTargetUrl ? normalizeCloudUrl(customUrl?.trim() || rawKey) : '';
   const isPlaysmarty = isTargetUrl && /link\.playsmarty\.uk/i.test(targetUrl);
 
   const ttTargetUrl = isTargetUrl ? targetUrl : `https://tunneltweak.com/api/cloudconfig/${cleanUuid}`;
@@ -5365,8 +5409,29 @@ async function resolveCloudConfigPayload(uuid: string, customUrl?: string): Prom
       } catch {}
     }
 
-    // If playsmarty failed to fetch or timed out, treat as expired/burned shortlink
+    // If playsmarty failed to fetch or timed out, attempt Wayback Machine archive before declaring expired
     if (isPlaysmarty) {
+      try {
+        const waybackSnapshot = await checkWaybackArchive(targetUrl);
+        if (waybackSnapshot) {
+          const snapResp = await fetch(waybackSnapshot, { signal: AbortSignal.timeout(6000) });
+          if (snapResp.ok) {
+            const snapText = (await snapResp.text()).trim();
+            if (snapText && !snapText.includes('Link not found') && !snapText.includes("doesn't exist")) {
+              return {
+                content: snapText,
+                endpointUrl: targetUrl,
+                httpStatus: 200,
+                fetchTimeMs: Date.now() - fetchStart,
+                provider: 'Wayback Machine Cloud Archive (web.archive.org)',
+                resolvedVia: 'Wayback Web Archive Snapshot',
+                fileName: 'recovered_config.hc',
+              };
+            }
+          }
+        }
+      } catch {}
+
       return {
         content: null,
         endpointUrl: targetUrl,

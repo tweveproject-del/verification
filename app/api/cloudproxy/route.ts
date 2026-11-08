@@ -3,6 +3,50 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function normalizeCloudUrl(rawUrl: string): string {
+  let u = rawUrl.trim();
+  // Google Drive file view link -> direct stream download
+  const gDriveMatch = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)/i);
+  if (gDriveMatch) {
+    return `https://drive.google.com/uc?id=${gDriveMatch[1]}&export=download`;
+  }
+  // Dropbox share link -> dl=1 direct binary stream
+  if (/dropbox\.com\//i.test(u)) {
+    if (u.includes('dl=0')) return u.replace('dl=0', 'dl=1');
+    if (!u.includes('dl=1')) return u + (u.includes('?') ? '&dl=1' : '?dl=1');
+  }
+  // Pastebin web link -> raw link
+  const pastebinMatch = u.match(/pastebin\.com\/([a-zA-Z0-9]+)$/i);
+  if (pastebinMatch && pastebinMatch[1] !== 'raw') {
+    return `https://pastebin.com/raw/${pastebinMatch[1]}`;
+  }
+  // GitHub Gist web link -> raw usercontent gist
+  const gistMatch = u.match(/gist\.github\.com\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9]+)$/i);
+  if (gistMatch) {
+    return `https://gist.githubusercontent.com/${gistMatch[1]}/${gistMatch[2]}/raw`;
+  }
+  // Rentry.co web link -> raw link
+  const rentryMatch = u.match(/rentry\.co\/([a-zA-Z0-9_-]+)$/i);
+  if (rentryMatch && rentryMatch[1] !== 'raw') {
+    return `https://rentry.co/${rentryMatch[1]}/raw`;
+  }
+  return u;
+}
+
+async function checkWaybackArchive(url: string): Promise<string | null> {
+  try {
+    const wbRes = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`, {
+      signal: AbortSignal.timeout(4000),
+    });
+    if (wbRes.ok) {
+      const wbData = await wbRes.json();
+      const snapshotUrl = wbData?.archived_snapshots?.closest?.url;
+      if (snapshotUrl) return snapshotUrl;
+    }
+  } catch {}
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const uuid = searchParams.get('uuid');
@@ -173,7 +217,7 @@ export async function GET(req: NextRequest) {
   // 2. Direct target URL or TunnelTweak Cloud API
   let targetUrl = '';
   if (customUrl) {
-    targetUrl = customUrl.trim();
+    targetUrl = normalizeCloudUrl(customUrl.trim());
   } else if (cleanUuid) {
     targetUrl = `https://tunneltweak.com/api/cloudconfig/${encodeURIComponent(cleanUuid)}`;
   }
@@ -185,7 +229,7 @@ export async function GET(req: NextRequest) {
   const isPlaysmarty = /link\.playsmarty\.uk/i.test(targetUrl);
 
   try {
-    const resp = await fetch(targetUrl, {
+    let resp = await fetch(targetUrl, {
       method: 'GET',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 (HTTP Custom/5.2.0)',
@@ -198,7 +242,26 @@ export async function GET(req: NextRequest) {
       signal: AbortSignal.timeout(10000),
     });
 
-    if (isPlaysmarty) {
+    let waybackRecovered = false;
+    if (!resp.ok && resp.status === 404) {
+      // Attempt Wayback Machine archive recovery
+      const archiveSnapshot = await checkWaybackArchive(targetUrl);
+      if (archiveSnapshot) {
+        try {
+          const snapResp = await fetch(archiveSnapshot, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Tweve/1.0' },
+            cache: 'no-store',
+            signal: AbortSignal.timeout(8000),
+          });
+          if (snapResp.ok) {
+            resp = snapResp;
+            waybackRecovered = true;
+          }
+        } catch {}
+      }
+    }
+
+    if (isPlaysmarty && !waybackRecovered) {
       if (!resp.ok || resp.status === 404) {
         return NextResponse.json(
           {

@@ -778,7 +778,51 @@ export default function ConfigInspectorPage() {
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [showCloudPassword, setShowCloudPassword] = useState(false);
   const [cloudJsonExpanded, setCloudJsonExpanded] = useState(false);
+  const [cloudLinkCopied, setCloudLinkCopied] = useState(false);
+  const [waybackProbing, setWaybackProbing] = useState(false);
+  const [waybackResult, setWaybackResult] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const generatePermanentCloudLink = (content: string): string => {
+    if (typeof window === 'undefined') return '';
+    try {
+      const b64 = btoa(unescape(encodeURIComponent(content)));
+      return `${window.location.origin}/#cloud=${encodeURIComponent(b64)}`;
+    } catch {
+      return `${window.location.origin}/#cloud=${encodeURIComponent(btoa(content))}`;
+    }
+  };
+
+  const handleCopyCloudLink = (content: string) => {
+    const link = generatePermanentCloudLink(content);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link);
+      setCloudLinkCopied(true);
+      setTimeout(() => setCloudLinkCopied(false), 3000);
+    }
+  };
+
+  const handleProbeWayback = async (targetUrl: string) => {
+    setWaybackProbing(true);
+    setWaybackResult(null);
+    try {
+      const wbRes = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(targetUrl)}`);
+      if (wbRes.ok) {
+        const wbData = await wbRes.json();
+        const snap = wbData?.archived_snapshots?.closest?.url;
+        if (snap) {
+          setWaybackResult(snap);
+          handleInspect(snap, 'wayback_recovered.hc');
+          return;
+        }
+      }
+      setWaybackResult('no_snapshot');
+    } catch {
+      setWaybackResult('no_snapshot');
+    } finally {
+      setWaybackProbing(false);
+    }
+  };
 
   const handleInspect = async (overrideInput?: string, fileName?: string) => {
     const targetInput = overrideInput !== undefined ? overrideInput : input;
@@ -842,6 +886,38 @@ export default function ConfigInspectorPage() {
         if (fileName) setImportedFileInfo({ name: fileName, size: content.length });
         handleInspect(content, fileName);
       };
+
+      // Auto-load deep cloud links via #cloud=, #cfg= or URL query parameters
+      try {
+        const hash = window.location.hash;
+        if (hash) {
+          const cleanHash = hash.replace(/^#/, '');
+          const hashParams = new URLSearchParams(cleanHash);
+          const cloudHash = hashParams.get('cloud') || hashParams.get('cfg');
+          if (cloudHash) {
+            let decoded = '';
+            try {
+              decoded = decodeURIComponent(escape(atob(cloudHash)));
+            } catch {
+              try {
+                decoded = atob(cloudHash);
+              } catch {}
+            }
+            if (decoded) {
+              setInput(decoded);
+              handleInspect(decoded, 'tweve_cloud_share.conf');
+              return;
+            }
+          }
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const cloudParam = urlParams.get('cloud') || urlParams.get('config') || urlParams.get('url');
+        if (cloudParam) {
+          setInput(cloudParam);
+          handleInspect(cloudParam, 'cloud_share');
+        }
+      } catch {}
     }
   }, []);
 
@@ -1287,7 +1363,17 @@ export default function ConfigInspectorPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-stretch sm:justify-end">
+          <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-stretch sm:justify-end flex-wrap">
+            {input.trim() && !input.trim().startsWith('http') && (
+              <button
+                type="button"
+                onClick={() => handleCopyCloudLink(input)}
+                className="flex-1 sm:flex-none px-3.5 py-2.5 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs sm:text-sm font-bold border border-emerald-400/40 transition cursor-pointer active:scale-95 text-center flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20"
+                title="Convert this configuration into a permanent shareable cloud link that never expires"
+              >
+                <span>{cloudLinkCopied ? '✓ Link Copied!' : '☁️ Share Cloud Link'}</span>
+              </button>
+            )}
             {(input || result) && (
               <button
                 type="button"
@@ -1347,25 +1433,103 @@ export default function ConfigInspectorPage() {
           </div>
 
           {result.isPlaysmartyExpired && (
-            <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-900/90 to-amber-950/30 border border-amber-500/40 text-slate-200 space-y-3 shadow-xl">
+            <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-900/95 to-amber-950/30 border border-amber-500/40 text-slate-200 space-y-4 shadow-xl">
               <div className="flex items-center gap-2.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
                 <h4 className="font-bold text-amber-300 text-sm sm:text-base">
-                  HTTP Custom (.hc) Coldplay Shortlink Information
+                  HTTP Custom (.hc) Coldplay Shortlink Expired / Burned
                 </h4>
               </div>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                Shortlinks on <code className="text-amber-200 font-mono">link.playsmarty.uk</code> are temporary and automatically expire after <strong className="text-white">30 minutes</strong> or upon their first single-use access (&quot;Opened or expired&quot;). Since the link has already burned or expired on Coldplay&apos;s shortener server, you can inspect the actual configuration by directly uploading or dragging &amp; dropping the original <code className="text-amber-200 font-mono">.hc</code> file into the inspector.
+                Shortlinks on <code className="text-amber-200 font-mono">link.playsmarty.uk</code> are strictly temporary and automatically self-destruct after <strong className="text-white">30 minutes</strong> or upon the first single-use access (&quot;Opened or expired&quot;). Because this link has already burned, the remote file is no longer available on Coldplay&apos;s server.
               </p>
-              <div className="flex items-center gap-3 pt-1 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-extrabold text-xs cursor-pointer shadow-md transition"
-                >
-                  📁 Upload .hc File Directly
-                </button>
-                <span className="text-xs text-slate-400">or drop your .hc file anywhere on this page</span>
+
+              {/* Universal New Ways to Verify & Share Cloud Configurations */}
+              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">⚡</span>
+                  <h5 className="text-xs sm:text-sm font-extrabold text-white">
+                    New Reliable Ways to Verify &amp; Share Cloud Configurations:
+                  </h5>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                  {/* Way 1: Upload original .hc file */}
+                  <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-700/60 flex flex-col justify-between space-y-2">
+                    <div>
+                      <span className="text-[11px] font-bold text-amber-300 block">1. Direct .hc Upload</span>
+                      <p className="text-[11px] text-slate-300 mt-1">Upload the original .hc file from your device to inspect all encrypted parameters offline.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs cursor-pointer shadow transition"
+                    >
+                      📁 Upload .hc File
+                    </button>
+                  </div>
+
+                  {/* Way 2: Tweve Permanent Cloud Link */}
+                  <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-700/60 flex flex-col justify-between space-y-2">
+                    <div>
+                      <span className="text-[11px] font-bold text-cyan-300 block">2. Tweve Permanent Cloud</span>
+                      <p className="text-[11px] text-slate-300 mt-1">Never burns or expires. Self-contained deep link encodes the payload directly into the URL.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (input && !input.startsWith('http')) {
+                          handleCopyCloudLink(input);
+                        } else {
+                          fileInputRef.current?.click();
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs cursor-pointer shadow transition"
+                    >
+                      {cloudLinkCopied ? '✓ Link Copied!' : '⚡ Create Permanent Link'}
+                    </button>
+                  </div>
+
+                  {/* Way 3: Web Archive Recovery Probe */}
+                  <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-700/60 flex flex-col justify-between space-y-2">
+                    <div>
+                      <span className="text-[11px] font-bold text-emerald-300 block">3. Web Archive Snapshot</span>
+                      <p className="text-[11px] text-slate-300 mt-1">Check if Wayback Machine cached the shortlink before it expired.</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={waybackProbing}
+                      onClick={() => handleProbeWayback(input.trim())}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs cursor-pointer shadow transition flex items-center justify-center gap-1.5"
+                    >
+                      {waybackProbing ? (
+                        <>
+                          <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Checking...
+                        </>
+                      ) : (
+                        '🔍 Probe Wayback Cache'
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {waybackResult === 'no_snapshot' && (
+                  <p className="text-[11px] text-rose-300 bg-rose-950/40 p-2 rounded border border-rose-800/40">
+                    No Wayback Machine snapshot found for this temporary link. Please upload the .hc file directly or use a permanent cloud host.
+                  </p>
+                )}
+
+                {/* Supported Permanent Hosts Guidance */}
+                <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+                  <span className="font-semibold text-white">Supported Permanent Cloud Hosts:</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono">Google Drive (direct)</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono">Dropbox (dl=1)</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono">GitHub Gist (raw)</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono">Pastebin (raw)</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono">Rentry.co (raw)</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono">OpenTunnel Cloud UUID</span>
+                </div>
               </div>
             </div>
           )}
@@ -1686,7 +1850,15 @@ export default function ConfigInspectorPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleCopyCloudLink(result.rawDecryptedJson || input)}
+                      className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-xs font-black transition cursor-pointer shadow-md shadow-emerald-500/20 flex items-center gap-1.5"
+                      title="Generate a self-contained permanent cloud link that never burns or expires"
+                    >
+                      <span>{cloudLinkCopied ? '✓ Copied Permanent Cloud Link!' : '⚡ Share Permanent Cloud Link'}</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => copyText('allCloudConfig', result.rawDecryptedJson || JSON.stringify(result.rawDecryptedConfig || cd, null, 2))}
