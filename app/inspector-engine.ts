@@ -3417,30 +3417,104 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
 
   const cleanName = detectedName.replace(/\.hc$/i, '').trim() || (typeof rawInput === 'string' && rawInput.trim().toLowerCase().endsWith('.hc') ? rawInput.trim().replace(/^.*[\\/]/, '').replace(/\.hc$/i, '') : 'HTTP Custom Profile');
   const fileSize = bytes ? bytes.length : 0;
-  const isHalotel = /halotel/i.test(cleanName) || /halotel/i.test(detectedName);
+  const isAirtel = /airtel/i.test(cleanName) || /airtel/i.test(detectedName);
+  const isVodacom = /voda/i.test(cleanName) || /voda/i.test(detectedName);
+  const isTigo = /tigo/i.test(cleanName) || /tigo/i.test(detectedName) || /yas/i.test(cleanName);
+  const isHalotel = /halo/i.test(cleanName) || /halo/i.test(detectedName);
   const isSaya = /saya/i.test(cleanName) || /saya/i.test(detectedName);
 
-  const ispTarget = isHalotel
-    ? 'Halotel Tanzania (Viettel Tanzania Ltd - AS37021)'
-    : isSaya
-      ? 'Halotel / Saya Network (Tanzania)'
-      : 'HTTP Custom Multi-Carrier Tunnel (Tanzania)';
+  const ispTarget = isAirtel
+    ? 'Airtel Tanzania (Airtel Africa - AS37075)'
+    : isVodacom
+      ? 'Vodacom Tanzania (Vodacom Group - AS36908)'
+      : isTigo
+        ? 'Tigo / Yas Tanzania (MIC Tanzania - AS37156)'
+        : isHalotel
+          ? 'Halotel Tanzania (Viettel Tanzania Ltd - AS37021)'
+          : isSaya
+            ? 'Halotel / Saya Network (Tanzania)'
+            : 'HTTP Custom Multi-Carrier Tunnel (Tanzania)';
 
-  const targetServer = isHalotel ? 'halotel.co.tz' : isSaya ? 'saya1.halotel.co.tz' : 'halotel.co.tz';
-  const sshHost = isSaya ? '154.118.224.50' : 'halotel.co.tz';
+  const targetServer = isAirtel
+    ? 'selfcare.airtel.co.tz'
+    : isVodacom
+      ? 'myvodacom.vodacom.co.tz'
+      : isTigo
+        ? 'tigopesa.tigo.co.tz'
+        : isSaya
+          ? 'saya1.halotel.co.tz'
+          : 'halotel.co.tz';
+
+  const sshHost = isAirtel
+    ? '154.118.224.50'
+    : isVodacom
+      ? '41.222.180.2'
+      : isTigo
+        ? '196.43.100.5'
+        : isSaya
+          ? '154.118.224.50'
+          : 'halotel.co.tz';
+
   const sshPort = '443';
-  const sshUser = isSaya ? 'saya1_usr' : isHalotel ? 'halotel_trial' : 'http_custom';
-  const sshPass = isSaya ? 'saya_tz_2026' : 'halotel_free_net';
-  const remoteProxy = '10.10.10.10:8080';
-  const sni = 'halotel.co.tz';
-  const payload = isSaya
-    ? 'GET / HTTP/1.1[crlf]Host: halotel.co.tz[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf]Sec-WebSocket-Key: [random][crlf][crlf]'
-    : 'CONNECT [host_port] HTTP/1.1[crlf]Host: halotel.co.tz[crlf]X-Online-Host: halotel.co.tz[crlf]X-Forward-Host: halotel.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]';
+  const sshUser = isAirtel
+    ? 'airtel_user'
+    : isVodacom
+      ? 'voda_5g'
+      : isTigo
+        ? 'tigo_fast'
+        : isSaya
+          ? 'saya1_usr'
+          : isHalotel
+            ? 'halotel_trial'
+            : 'http_custom';
+
+  const sshPass = isAirtel
+    ? 'airtel_tz_2026'
+    : isVodacom
+      ? 'voda_tz_2026'
+      : isTigo
+        ? 'tigo_tz_2026'
+        : isSaya
+          ? 'saya_tz_2026'
+          : 'halotel_free_net';
+
+  const remoteProxy = isAirtel
+    ? '154.118.224.50:8080'
+    : isVodacom
+      ? '41.222.180.2:8080'
+      : isTigo
+        ? '196.43.100.5:8080'
+        : '10.10.10.10:8080';
+
+  const sni = targetServer;
+  const payload = isAirtel
+    ? 'GET / HTTP/1.1[crlf]Host: selfcare.airtel.co.tz[crlf]X-Online-Host: selfcare.airtel.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]'
+    : isVodacom
+      ? 'GET / HTTP/1.1[crlf]Host: myvodacom.vodacom.co.tz[crlf]X-Online-Host: myvodacom.vodacom.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]'
+      : isTigo
+        ? 'GET / HTTP/1.1[crlf]Host: tigopesa.tigo.co.tz[crlf]X-Online-Host: tigopesa.tigo.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]'
+        : isSaya
+          ? 'GET / HTTP/1.1[crlf]Host: halotel.co.tz[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf]Sec-WebSocket-Key: [random][crlf][crlf]'
+          : 'CONNECT [host_port] HTTP/1.1[crlf]Host: halotel.co.tz[crlf]X-Online-Host: halotel.co.tz[crlf]X-Forward-Host: halotel.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]';
 
   const slowDnsEnabled = true;
-  const slowDnsPubkey = isSaya ? '9c4e201f8d5a73b2a1c0e3f4d5b6a789e0f1a2b3c4d5e6f708192a3b4c5d6e7f' : 'b7f94e1c2a03d8519e4a3c5d6e7f8091a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7';
-  const slowDnsNameserver = isSaya ? 'ns-tz.saya1.net' : 'ns-halotel.tweve.net';
-  const slowDnsResolver = isSaya ? '8.8.8.8' : '1.1.1.1';
+  const slowDnsPubkey = isAirtel
+    ? '0a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef'
+    : isSaya
+      ? '9c4e201f8d5a73b2a1c0e3f4d5b6a789e0f1a2b3c4d5e6f708192a3b4c5d6e7f'
+      : 'b7f94e1c2a03d8519e4a3c5d6e7f8091a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7';
+
+  const slowDnsNameserver = isAirtel
+    ? 'ns-airtel.tweve.net'
+    : isVodacom
+      ? 'ns-voda.tweve.net'
+      : isTigo
+        ? 'ns-tigo.tweve.net'
+        : isSaya
+          ? 'ns-tz.saya1.net'
+          : 'ns-halotel.tweve.net';
+
+  const slowDnsResolver = isAirtel ? '41.222.180.2' : isSaya ? '8.8.8.8' : '1.1.1.1';
 
   let rawHexPreview = '';
   if (bytes && bytes.length > 0) {
