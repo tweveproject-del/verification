@@ -182,20 +182,44 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing uuid or url parameter' }, { status: 400 });
   }
 
+  const isPlaysmarty = /link\.playsmarty\.uk/i.test(targetUrl);
+
   try {
     const resp = await fetch(targetUrl, {
       method: 'GET',
       headers: {
-        'User-Agent': 'TunnelTweak/2.0 (Android; CloudInspector)',
-        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 (HTTP Custom/5.2.0)',
+        Accept: isPlaysmarty
+          ? '*/*'
+          : 'application/json, text/plain, application/octet-stream, */*',
       },
       cache: 'no-store',
-      signal: AbortSignal.timeout(8000),
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10000),
     });
+
+    if (isPlaysmarty) {
+      if (!resp.ok || resp.status === 404) {
+        return NextResponse.json(
+          {
+            error: 'The HTTP Custom shortlink on link.playsmarty.uk has expired or has already been used (playsmarty links have a 30-minute time-to-live or single-use burn policy).',
+            isPlaysmartyExpired: true,
+            provider: 'HTTP Custom Coldplay Shortlinks (link.playsmarty.uk)',
+            url: targetUrl,
+            status: resp.status,
+            recommendation: 'Upload or drag & drop the original .hc file directly into the inspector, or request a newly generated shortlink from the sender.',
+          },
+          {
+            status: 404,
+            headers: { 'Access-Control-Allow-Origin': '*' },
+          }
+        );
+      }
+    }
 
     if (!resp.ok) {
       return NextResponse.json(
-        { error: `Cloud server returned HTTP ${resp.status}` },
+        { error: `Cloud server returned HTTP ${resp.status} for "${targetUrl}"` },
         {
           status: resp.status,
           headers: { 'Access-Control-Allow-Origin': '*' },
@@ -203,13 +227,135 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const data = await resp.json();
-    return NextResponse.json(data, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+    const contentDisp = resp.headers.get('content-disposition') || '';
+    let fileName = '';
+    const cdMatch = contentDisp.match(/filename\*?=['"]?(?:UTF-8'')?([^'";\n]+)['"]?/i);
+    if (cdMatch) {
+      try {
+        fileName = decodeURIComponent(cdMatch[1]);
+      } catch {
+        fileName = cdMatch[1];
+      }
+    }
+
+    if (!fileName) {
+      const urlPath = new URL(targetUrl).pathname;
+      const lastSlash = urlPath.lastIndexOf('/');
+      if (lastSlash >= 0 && lastSlash < urlPath.length - 1) {
+        fileName = urlPath.substring(lastSlash + 1);
+      }
+    }
+
+    // JSON response
+    if (contentType.includes('application/json')) {
+      try {
+        const jsonData = await resp.json();
+        return NextResponse.json(
+          {
+            config: jsonData.config || jsonData.data || jsonData.profile || jsonData,
+            format: jsonData.format || (isPlaysmarty ? 'http_custom' : 'json'),
+            provider: jsonData.provider || (isPlaysmarty ? 'HTTP Custom Coldplay Shortlinks (link.playsmarty.uk)' : 'Remote Cloud API'),
+            fileName: fileName || (isPlaysmarty ? 'config.hc' : undefined),
+            rawJson: JSON.stringify(jsonData, null, 2),
+          },
+          {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            },
+          }
+        );
+      } catch {
+        // Fallback to array buffer
+      }
+    }
+
+    // Binary / File response (e.g. .hc, .tnl, .nm, octet-stream)
+    const arrayBuf = await resp.arrayBuffer();
+    const buf = Buffer.from(arrayBuf);
+
+    if (isPlaysmarty) {
+      const textPreview = buf.toString('utf8', 0, Math.min(buf.length, 500));
+      if (textPreview.includes('Link not found') || textPreview.includes("That link doesn't exist")) {
+        return NextResponse.json(
+          {
+            error: 'The HTTP Custom shortlink on link.playsmarty.uk has expired or has already been used (30-minute expiration).',
+            isPlaysmartyExpired: true,
+            provider: 'HTTP Custom Coldplay Shortlinks (link.playsmarty.uk)',
+            url: targetUrl,
+            status: 404,
+            recommendation: 'Upload or drag & drop the original .hc file directly into the inspector, or request a freshly created link.',
+          },
+          {
+            status: 404,
+            headers: { 'Access-Control-Allow-Origin': '*' },
+          }
+        );
+      }
+    }
+
+    // Check if buffer is valid text / json or base64 binary
+    let isUtf8Text = true;
+    for (let i = 0; i < Math.min(buf.length, 512); i++) {
+      if (buf[i] === 0) {
+        isUtf8Text = false;
+        break;
+      }
+    }
+
+    if (isUtf8Text) {
+      const text = buf.toString('utf8').trim();
+      try {
+        const json = JSON.parse(text);
+        return NextResponse.json(
+          {
+            config: json.config || json.data || json,
+            format: 'json',
+            provider: isPlaysmarty ? 'HTTP Custom Coldplay Shortlinks (link.playsmarty.uk)' : 'Remote Config URL',
+            fileName: fileName || (isPlaysmarty ? 'config.hc' : undefined),
+          },
+          {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            },
+          }
+        );
+      } catch {
+        return NextResponse.json(
+          {
+            config: text,
+            format: isPlaysmarty ? 'http_custom' : 'text',
+            provider: isPlaysmarty ? 'HTTP Custom Coldplay Shortlinks (link.playsmarty.uk)' : 'Remote Config URL',
+            fileName: fileName || (isPlaysmarty ? 'config.hc' : undefined),
+          },
+          {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            },
+          }
+        );
+      }
+    }
+
+    // Binary file: deliver as Base64 with proper filename
+    return NextResponse.json(
+      {
+        config: buf.toString('base64'),
+        isBinary: true,
+        fileName: fileName || (isPlaysmarty ? 'config.hc' : 'config.bin'),
+        format: isPlaysmarty ? 'http_custom' : 'binary',
+        provider: isPlaysmarty ? 'HTTP Custom Coldplay Shortlinks (link.playsmarty.uk)' : 'Remote Binary File',
       },
-    });
+      {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        },
+      }
+    );
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || 'Failed to fetch cloud configuration' },

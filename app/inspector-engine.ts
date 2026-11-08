@@ -13,6 +13,8 @@ export type ValidationCheck = {
 export type InspectResponse = {
   success?: boolean;
   error?: string;
+  isPlaysmartyExpired?: boolean;
+  rawDecryptedJson?: string;
   requiresPassphrase?: boolean;
   inspectedAt?: string;
   encryptionMethod?: string;
@@ -5234,16 +5236,149 @@ async function resolveCloudConfigPayload(uuid: string, customUrl?: string): Prom
   fetchTimeMs: number;
   provider: string;
   resolvedVia: string;
+  isPlaysmartyExpired?: boolean;
+  fileName?: string;
+  errorReason?: string;
 }> {
   const fetchStart = Date.now();
   let content: string | null = null;
   const cleanUuid = uuid.trim().toLowerCase();
   const rawKey = uuid.trim();
-  const ttTargetUrl = `https://tunneltweak.com/api/cloudconfig/${cleanUuid}`;
+  const isTargetUrl = /^https?:\/\//i.test(customUrl?.trim() || rawKey);
+  const targetUrl = isTargetUrl ? (customUrl?.trim() || rawKey) : '';
+  const isPlaysmarty = isTargetUrl && /link\.playsmarty\.uk/i.test(targetUrl);
+
+  const ttTargetUrl = isTargetUrl ? targetUrl : `https://tunneltweak.com/api/cloudconfig/${cleanUuid}`;
   let endpointUrl = ttTargetUrl;
   let httpStatus: number | null = null;
-  let provider = 'NPV Tunnel & Tweve Cloud API';
+  let provider = isPlaysmarty
+    ? 'HTTP Custom Coldplay Shortlinks (link.playsmarty.uk)'
+    : (isTargetUrl ? 'Remote Configuration URL' : 'NPV Tunnel & Tweve Cloud API');
   let resolvedVia = 'Direct API';
+  let resolvedFileName: string | undefined = isPlaysmarty ? 'config.hc' : undefined;
+
+  // Handle direct HTTP/HTTPS URLs (including link.playsmarty.uk, cloud raw links, .hc downloads)
+  if (isTargetUrl) {
+    endpointUrl = targetUrl;
+    // 1. Try local server proxy first
+    if (typeof window !== 'undefined') {
+      try {
+        const proxyResp = await fetch(`/api/cloudproxy?url=${encodeURIComponent(targetUrl)}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(6000),
+        });
+        if (proxyResp.ok) {
+          const proxyData = await proxyResp.json();
+          if (proxyData && proxyData.config) {
+            return {
+              content: proxyData.config,
+              endpointUrl: targetUrl,
+              httpStatus: proxyResp.status,
+              fetchTimeMs: Date.now() - fetchStart,
+              provider: proxyData.provider || provider,
+              resolvedVia: 'Server Cloud Gateway (/api/cloudproxy)',
+              fileName: proxyData.fileName || resolvedFileName,
+            };
+          }
+        } else if (proxyResp.status === 404 && isPlaysmarty) {
+          try {
+            const pData = await proxyResp.json();
+            if (pData?.isPlaysmartyExpired) {
+              return {
+                content: null,
+                endpointUrl: targetUrl,
+                httpStatus: 404,
+                fetchTimeMs: Date.now() - fetchStart,
+                provider,
+                resolvedVia: 'Shortlink Gateway',
+                isPlaysmartyExpired: true,
+                errorReason: pData.error || 'The HTTP Custom (.hc) shortlink on link.playsmarty.uk has expired (30-minute expiration limit) or was already downloaded.',
+              };
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    // 2. Direct or CORS proxy fetch (works in browser & static export)
+    const fetchCandidates = [
+      targetUrl,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+      `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+    ];
+
+    for (const cand of fetchCandidates) {
+      try {
+        const resp = await fetch(cand, {
+          headers: { 'Accept': '*/*' },
+          signal: AbortSignal.timeout(6000),
+        });
+        httpStatus = resp.status;
+        if (resp.ok) {
+          const text = (await resp.text()).trim();
+          if (isPlaysmarty) {
+            if (text.includes('Link not found') || text.includes("That link doesn't exist") || text.includes('has already been used')) {
+              return {
+                content: null,
+                endpointUrl: targetUrl,
+                httpStatus: 404,
+                fetchTimeMs: Date.now() - fetchStart,
+                provider,
+                resolvedVia: 'Direct Shortlink Probe',
+                isPlaysmartyExpired: true,
+                errorReason: 'The HTTP Custom shortlink on link.playsmarty.uk has expired (30-minute expiration) or was already downloaded.',
+              };
+            }
+          }
+          if (text) {
+            try {
+              const parsed = JSON.parse(text);
+              content = parsed.config || parsed.data || text;
+            } catch {
+              content = text;
+            }
+            if (content) {
+              return {
+                content,
+                endpointUrl: targetUrl,
+                httpStatus: resp.status,
+                fetchTimeMs: Date.now() - fetchStart,
+                provider,
+                resolvedVia: cand === targetUrl ? 'Direct Remote URL' : 'Public CORS Gateway',
+                fileName: resolvedFileName,
+              };
+            }
+          }
+        } else if (resp.status === 404 && isPlaysmarty) {
+          return {
+            content: null,
+            endpointUrl: targetUrl,
+            httpStatus: 404,
+            fetchTimeMs: Date.now() - fetchStart,
+            provider,
+            resolvedVia: 'Shortlink Probe',
+            isPlaysmartyExpired: true,
+            errorReason: 'The HTTP Custom shortlink on link.playsmarty.uk has expired (30-minute expiration) or was already downloaded.',
+          };
+        }
+      } catch {}
+    }
+
+    // If playsmarty failed to fetch or timed out, treat as expired/burned shortlink
+    if (isPlaysmarty) {
+      return {
+        content: null,
+        endpointUrl: targetUrl,
+        httpStatus: 404,
+        fetchTimeMs: Date.now() - fetchStart,
+        provider,
+        resolvedVia: 'Shortlink Diagnostic Engine',
+        isPlaysmartyExpired: true,
+        errorReason: 'The HTTP Custom shortlink on link.playsmarty.uk has expired (links have a 30-minute time-to-live or single-use burn policy) or was already downloaded. Please upload the original .hc file directly into the inspector.',
+      };
+    }
+  }
 
   const OPENTUNNEL_SAMPLE_B64 = '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';
 
@@ -5468,13 +5603,47 @@ export async function inspectConfigLocally(params: {
     } catch { }
   }
 
-  const directUuidMatch = !isDirectUri && !trimmed.startsWith('{') ? trimmed.match(uuidRegex) : null;
-  const isSlug = !isDirectUri && /^[a-zA-Z0-9_-]{5,16}$/.test(trimmed);
-  const isEmojiCloud = !isDirectUri && (/[\u{1F300}-\u{1FAFF}]/u.test(trimmed) || trimmed.includes('☁️') || trimmed.includes('💉'));
-  const detectedCloudUuid = zeroWidthUuid || emojiUuid || (directUuidMatch ? directUuidMatch[1].toLowerCase() : (isSlug || isEmojiCloud ? trimmed : null));
+  const isHttpUrl = /^https?:\/\//i.test(trimmed);
+  const directUuidMatch = !isDirectUri && !isHttpUrl && !trimmed.startsWith('{') ? trimmed.match(uuidRegex) : null;
+  const isSlug = !isDirectUri && !isHttpUrl && /^[a-zA-Z0-9_-]{5,16}$/.test(trimmed);
+  const isEmojiCloud = !isDirectUri && !isHttpUrl && (/[\u{1F300}-\u{1FAFF}]/u.test(trimmed) || trimmed.includes('☁️') || trimmed.includes('💉'));
+  const detectedCloudUuid = isHttpUrl
+    ? trimmed
+    : (zeroWidthUuid || emojiUuid || (directUuidMatch ? directUuidMatch[1].toLowerCase() : (isSlug || isEmojiCloud ? trimmed : null)));
 
-  // Cloud lookup via Custom URL, TunnelTweak API, or Firebase RTDB
-  if (customCloudUrl && /^https?:\/\//i.test(customCloudUrl.trim())) {
+  // Cloud lookup via Remote URL, TunnelTweak API, or Firebase RTDB
+  if (isHttpUrl) {
+    const fetchRes = await resolveCloudConfigPayload(trimmed, trimmed);
+    cloudMeta.isCloudFetch = true;
+    cloudMeta.uuid = trimmed;
+    cloudMeta.endpointUrl = fetchRes.endpointUrl;
+    cloudMeta.httpStatus = fetchRes.httpStatus;
+    cloudMeta.fetchTimeMs = fetchRes.fetchTimeMs;
+    cloudMeta.cloudProvider = fetchRes.provider;
+    cloudMeta.resolvedVia = fetchRes.resolvedVia;
+
+    if (fetchRes.isPlaysmartyExpired || (fetchRes.httpStatus === 404 && /link\.playsmarty\.uk/i.test(trimmed))) {
+      return {
+        error: fetchRes.errorReason || 'The HTTP Custom (.hc) shortlink on link.playsmarty.uk has expired (links have a 30-minute time-to-live or single-use burn policy) or was already downloaded. Please upload the original .hc file directly into the inspector.',
+        encryptionMethod: 'HTTP Custom Coldplay Shortlinks (link.playsmarty.uk)',
+        cloudMeta,
+        isPlaysmartyExpired: true,
+      };
+    }
+
+    if (fetchRes.content) {
+      rawEncryptedContent = fetchRes.content;
+      if (!params.fileName && fetchRes.fileName) {
+        params.fileName = fetchRes.fileName;
+      }
+    } else {
+      return {
+        error: `Could not fetch remote configuration from "${fetchRes.endpointUrl}" (HTTP ${fetchRes.httpStatus ?? 'Network Error'}). Ensure the link is active and reachable.`,
+        encryptionMethod: fetchRes.provider || 'Remote Cloud URL',
+        cloudMeta,
+      };
+    }
+  } else if (customCloudUrl && /^https?:\/\//i.test(customCloudUrl.trim())) {
     const fetchRes = await resolveCloudConfigPayload(detectedCloudUuid || trimmed, customCloudUrl);
     cloudMeta.isCloudFetch = true;
     cloudMeta.uuid = detectedCloudUuid || trimmed;
@@ -6127,5 +6296,6 @@ export async function inspectConfigLocally(params: {
           : ['Verify and correct the failing configuration parameters.'],
     },
     rawDecryptedConfig: cfg,
+    rawDecryptedJson: JSON.stringify(cfg, null, 2),
   };
 }

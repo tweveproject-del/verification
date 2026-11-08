@@ -471,8 +471,13 @@ export default function TanzaniaCarrierHub({ onLoadConfig, onRunInspect }: Tanza
                       className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
                         isSelected
                           ? `${carrier.pillClass} ring-2 ring-sky-400 shadow-xl scale-[1.01]`
-                          : 'carrier-card-unselected opacity-85 hover:opacity-100'
+                          : 'carrier-card-unselected opacity-90 hover:opacity-100 hover:border-sky-400/50'
                       }`}
+                      style={{
+                        background: isSelected ? undefined : 'linear-gradient(145deg, #0d1527 0%, #070c16 100%)',
+                        borderColor: isSelected ? undefined : 'rgba(56, 189, 248, 0.25)',
+                        color: '#ffffff'
+                      }}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs sm:text-sm font-extrabold text-white tracking-wide">{carrier.name}</span>

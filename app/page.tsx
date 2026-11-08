@@ -16,6 +16,8 @@ type ValidationCheck = {
 type InspectResponse = {
   success?: boolean;
   error?: string;
+  isPlaysmartyExpired?: boolean;
+  rawDecryptedJson?: string;
   requiresPassphrase?: boolean;
   inspectedAt?: string;
   encryptionMethod?: string;
@@ -774,6 +776,8 @@ export default function ConfigInspectorPage() {
   >('auto');
   const [importedFileInfo, setImportedFileInfo] = useState<{ name: string; size: number } | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [showCloudPassword, setShowCloudPassword] = useState(false);
+  const [cloudJsonExpanded, setCloudJsonExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleInspect = async (overrideInput?: string, fileName?: string) => {
@@ -1324,19 +1328,47 @@ export default function ConfigInspectorPage() {
 
       {/* Error Banner */}
       {result?.error && (
-        <div className="mt-6 p-5 rounded-2xl bg-rose-950/50 border border-rose-500/40 text-rose-200 flex items-start gap-3.5">
-          <svg width="24" height="24" className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-          </svg>
-          <div>
-            <h3 className="font-bold text-rose-300">Configuration Verification Failed</h3>
-            <p className="text-sm mt-1">{result.error}</p>
-            {result.encryptionMethod && (
-              <p className="text-xs text-rose-300/80 mt-2">
-                Detected Format: <span className="font-mono">{result.encryptionMethod}</span>
-              </p>
-            )}
+        <div className="mt-6 space-y-4">
+          <div className="p-5 rounded-2xl bg-rose-950/50 border border-rose-500/40 text-rose-200 flex items-start gap-3.5">
+            <svg width="24" height="24" className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <div className="flex-1">
+              <h3 className="font-bold text-rose-300">
+                {result.isPlaysmartyExpired ? 'HTTP Custom Shortlink Expired / Burned' : 'Configuration Verification Failed'}
+              </h3>
+              <p className="text-sm mt-1">{result.error}</p>
+              {result.encryptionMethod && (
+                <p className="text-xs text-rose-300/80 mt-2">
+                  Detected Format: <span className="font-mono">{result.encryptionMethod}</span>
+                </p>
+              )}
+            </div>
           </div>
+
+          {result.isPlaysmartyExpired && (
+            <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-900/90 to-amber-950/30 border border-amber-500/40 text-slate-200 space-y-3 shadow-xl">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                <h4 className="font-bold text-amber-300 text-sm sm:text-base">
+                  HTTP Custom (.hc) Coldplay Shortlink Information
+                </h4>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Shortlinks on <code className="text-amber-200 font-mono">link.playsmarty.uk</code> are temporary and automatically expire after <strong className="text-white">30 minutes</strong> or upon their first single-use access (&quot;Opened or expired&quot;). Since the link has already burned or expired on Coldplay&apos;s shortener server, you can inspect the actual configuration by directly uploading or dragging &amp; dropping the original <code className="text-amber-200 font-mono">.hc</code> file into the inspector.
+              </p>
+              <div className="flex items-center gap-3 pt-1 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-extrabold text-xs cursor-pointer shadow-md transition"
+                >
+                  📁 Upload .hc File Directly
+                </button>
+                <span className="text-xs text-slate-400">or drop your .hc file anywhere on this page</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1551,83 +1583,314 @@ export default function ConfigInspectorPage() {
 
           {/* Cloud Verification & Origin Banner */}
           {result.cloudMeta?.isCloudFetch && (
-            <div className="bg-gradient-to-r from-cyan-950/40 via-slate-900/90 to-teal-950/40 border border-cyan-500/40 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3">
-              <div className="flex items-center justify-between border-b border-cyan-500/20 pb-3 flex-wrap gap-2">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-3 h-3 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400 animate-pulse" />
-                  <h3 className="text-sm sm:text-base font-bold text-white">
-                    Cloud Configuration Verified — <span className="text-cyan-300 font-mono">{result.cloudMeta.uuid}</span>
-                  </h3>
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-cyan-950/40 via-slate-900/90 to-teal-950/40 border border-cyan-500/40 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3">
+                <div className="flex items-center justify-between border-b border-cyan-500/20 pb-3 flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-3 h-3 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400 animate-pulse" />
+                    <h3 className="text-sm sm:text-base font-bold text-white">
+                      Cloud Configuration Verified — <span className="text-cyan-300 font-mono break-all">{result.cloudMeta.uuid}</span>
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      HTTP {result.cloudMeta.httpStatus} OK • {result.cloudMeta.fetchTimeMs}ms
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                      {result.cloudMeta.cloudProvider || 'TunnelTweak Cloud'}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                    HTTP {result.cloudMeta.httpStatus} OK • {result.cloudMeta.fetchTimeMs}ms
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                    {result.cloudMeta.cloudProvider || 'TunnelTweak Cloud'}
-                  </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                    <span className="text-slate-400 font-medium uppercase tracking-wider text-[11px] block">
+                      Cloud Source / UUID
+                    </span>
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <span className="font-mono text-cyan-200 font-bold truncate">
+                        {result.cloudMeta.uuid}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copyText('cloudUuid', result.cloudMeta?.uuid || '')}
+                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 shrink-0 cursor-pointer text-[11px]"
+                      >
+                        {copiedKey === 'cloudUuid' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                    <span className="text-slate-400 font-medium uppercase tracking-wider text-[11px] block">
+                      Cloud API Endpoint
+                    </span>
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <a
+                        href={result.cloudMeta.endpointUrl || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-cyan-400 hover:underline truncate"
+                        title={result.cloudMeta.endpointUrl || ''}
+                      >
+                        {result.cloudMeta.endpointUrl}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => copyText('cloudUrl', result.cloudMeta?.endpointUrl || '')}
+                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 shrink-0 cursor-pointer text-[11px]"
+                      >
+                        {copiedKey === 'cloudUrl' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                    <span className="text-slate-400 font-medium uppercase tracking-wider text-[11px] block">
+                      Resolution Channel
+                    </span>
+                    <span className="font-semibold text-slate-200 mt-1 block">
+                      {result.cloudMeta.resolvedVia || 'TunnelTweak Direct'}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                    <span className="text-slate-400 font-medium uppercase tracking-wider text-[11px] block">
+                      Payload Decryption
+                    </span>
+                    <span className="font-semibold text-emerald-300 mt-1 block truncate">
+                      {result.encryptionMethod || 'AES-128-CBC Decrypted'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-                  <span className="text-slate-400 font-medium uppercase tracking-wider text-[11px] block">
-                    Cloud UUID
-                  </span>
-                  <div className="flex items-center justify-between gap-2 mt-1">
-                    <span className="font-mono text-cyan-200 font-bold truncate">
-                      {result.cloudMeta.uuid}
+              {/* Real Actual Configuration of Cloud Config Showcase Card */}
+              <div className="bg-gradient-to-b from-slate-900/95 via-slate-950 to-slate-900/95 border-2 border-cyan-500/50 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-cyan-500/30 gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center shrink-0">
+                      <span className="text-xl">☁️</span>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-base sm:text-lg font-black text-white">
+                          Real Actual Configuration of Cloud Config
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          100% Offline Decrypted
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Provider: <span className="text-cyan-300 font-mono">{result.cloudMeta.cloudProvider || 'TunnelTweak Cloud API'}</span> • Mode #{sum.tunnelType} ({sum.connectionTypeName})
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => copyText('allCloudConfig', result.rawDecryptedJson || JSON.stringify(result.rawDecryptedConfig || cd, null, 2))}
+                      className="px-3.5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black transition cursor-pointer shadow-md shadow-cyan-500/20 flex items-center gap-1.5"
+                    >
+                      <span>{copiedKey === 'allCloudConfig' ? '✓ Copied Real Config!' : '📋 Copy Real Config'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
+                  {/* 1. Protocol & Tunnel Mode */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">
+                      Decrypted Tunnel Protocol
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => copyText('cloudUuid', result.cloudMeta?.uuid || '')}
-                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 shrink-0 cursor-pointer text-[11px]"
-                    >
-                      {copiedKey === 'cloudUuid' ? 'Copied!' : 'Copy'}
-                    </button>
+                    <div className="text-sm font-extrabold text-white flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                      <span>{sum.connectionTypeName}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      Category: {sum.connectionCategory} • TunnelType #{sum.tunnelType}
+                    </div>
+                  </div>
+
+                  {/* 2. Remote Server Endpoint */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">
+                      Remote Server &amp; Port
+                    </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-cyan-200 font-bold text-xs truncate">
+                        {cd.ssh.server || cd.v2ray.serverHost || cd.hysteria2.server || 'Dynamic / Gateway'} : {cd.ssh.port || cd.v2ray.serverPort || cd.hysteria2.port || '443'}
+                      </span>
+                      {(cd.ssh.server || cd.v2ray.serverHost) && (
+                        <button
+                          type="button"
+                          onClick={() => copyText('cloudServer', `${cd.ssh.server || cd.v2ray.serverHost}:${cd.ssh.port || cd.v2ray.serverPort}`)}
+                          className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[10px] font-mono cursor-pointer"
+                        >
+                          {copiedKey === 'cloudServer' ? 'Copied!' : 'Copy'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Proxy: <span className="font-mono text-slate-300">{cd.proxyAndPayload.proxyHost ? `${cd.proxyAndPayload.proxyHost}:${cd.proxyAndPayload.proxyPort}` : 'Direct Connection'}</span>
+                    </div>
+                  </div>
+
+                  {/* 3. SNI / SSL Spoofer */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">
+                      SNI / TLS Spoofer
+                    </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-emerald-300 font-bold text-xs truncate">
+                        {cd.proxyAndPayload.sni || cd.v2ray.sni || cd.hysteria2.sni || 'None / Plain TCP'}
+                      </span>
+                      {(cd.proxyAndPayload.sni || cd.v2ray.sni) && (
+                        <button
+                          type="button"
+                          onClick={() => copyText('cloudSni', cd.proxyAndPayload.sni || cd.v2ray.sni)}
+                          className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[10px] font-mono cursor-pointer"
+                        >
+                          {copiedKey === 'cloudSni' ? 'Copied!' : 'Copy'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Port: <span className="font-mono text-slate-300">{cd.proxyAndPayload.sslPort || '443'}</span> • SSL / SNI Spoof
+                    </div>
+                  </div>
+
+                  {/* 4. Credentials */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">
+                      Authentication Credentials
+                    </span>
+                    <div className="flex items-center justify-between font-mono text-[11px]">
+                      <span className="text-slate-400">User:</span>
+                      <span className="text-cyan-300 font-bold">{cd.ssh.username || (cd.v2ray.uuid ? `UUID: ${cd.v2ray.uuid.slice(0, 8)}...` : 'Pre-configured')}</span>
+                    </div>
+                    <div className="flex items-center justify-between font-mono text-[11px]">
+                      <span className="text-slate-400">Password:</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-amber-300 font-bold">
+                          {showCloudPassword ? (cd.ssh.password || 'none') : (cd.ssh.password ? '••••••••' : 'none')}
+                        </span>
+                        {cd.ssh.password && (
+                          <button
+                            type="button"
+                            onClick={() => setShowCloudPassword(!showCloudPassword)}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
+                          >
+                            {showCloudPassword ? 'Hide' : 'Show'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5. Device Lock & Hardware ID */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">
+                      Device &amp; Hardware ID Lock
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${sum.hwidEnabled ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                      <span className="font-extrabold text-white text-xs">
+                        {sum.hwidEnabled ? 'HWID Device Locked' : 'Unlocked (Any Device)'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-mono truncate">
+                      {sum.hwidEnabled ? `Allowed HWID: ${sum.hwidList || 'Enforced'}` : 'Universal Device Compatibility'}
+                    </div>
+                  </div>
+
+                  {/* 6. Expiry & Root Security */}
+                  <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">
+                      Expiration &amp; Root Check
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${sum.isExpired ? 'bg-rose-400' : 'bg-emerald-400'}`} />
+                      <span className={`font-extrabold text-xs ${sum.isExpired ? 'text-rose-300' : 'text-emerald-300'}`}>
+                        {sum.isExpired ? 'Expired' : (sum.expiryDateIso ? `Active (${sum.remainingHours}h remaining)` : 'Lifetime / No Expiry')}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Root: <span className={sum.blockRooted ? 'text-amber-300 font-semibold' : 'text-slate-300'}>{sum.blockRooted ? 'Blocked on Rooted Phones' : 'Allowed on All Phones'}</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-                  <span className="text-slate-400 font-medium uppercase tracking-wider text-[11px] block">
-                    Cloud API Endpoint
-                  </span>
-                  <div className="flex items-center justify-between gap-2 mt-1">
-                    <a
-                      href={result.cloudMeta.endpointUrl || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-mono text-cyan-400 hover:underline truncate"
-                      title={result.cloudMeta.endpointUrl || ''}
-                    >
-                      {result.cloudMeta.endpointUrl}
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => copyText('cloudUrl', result.cloudMeta?.endpointUrl || '')}
-                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 shrink-0 cursor-pointer text-[11px]"
-                    >
-                      {copiedKey === 'cloudUrl' ? 'Copied!' : 'Copy'}
-                    </button>
+                {/* Injected HTTP Payload Box */}
+                {cd.proxyAndPayload.payload && (
+                  <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] flex items-center gap-2">
+                        <span>Injected HTTP Payload</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono">
+                          {cd.proxyAndPayload.payloadDetectedTokens?.length || 0} Dynamic Tokens
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copyText('cloudPayload', cd.proxyAndPayload.payload)}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-mono cursor-pointer"
+                      >
+                        {copiedKey === 'cloudPayload' ? 'Copied!' : 'Copy Payload'}
+                      </button>
+                    </div>
+                    <pre className="p-3 rounded-lg bg-[#020617] border border-slate-800/80 text-[11px] font-mono text-cyan-200 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed">
+                      {cd.proxyAndPayload.payload}
+                    </pre>
+                    {cd.proxyAndPayload.payloadExpandedPreview && (
+                      <div className="pt-1.5">
+                        <span className="text-slate-500 text-[10px] block mb-1">Live Expanded Request to Gateway:</span>
+                        <pre className="p-2.5 rounded bg-[#030712] border border-slate-900 text-[10px] font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap break-all">
+                          {cd.proxyAndPayload.payloadExpandedPreview}
+                        </pre>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
 
-                <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-                  <span className="text-slate-400 font-medium uppercase tracking-wider text-[11px] block">
-                    Resolution Channel
-                  </span>
-                  <span className="font-semibold text-slate-200 mt-1 block">
-                    {result.cloudMeta.resolvedVia || 'TunnelTweak Direct'}
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-                  <span className="text-slate-400 font-medium uppercase tracking-wider text-[11px] block">
-                    Payload Decryption
-                  </span>
-                  <span className="font-semibold text-emerald-300 mt-1 block truncate">
-                    AES-128-CBC (TunnelTweak2024!)
-                  </span>
+                {/* Decrypted Configuration JSON Dump Viewer */}
+                <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                        Decrypted Configuration Object (Full Dump)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCloudJsonExpanded(!cloudJsonExpanded)}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] cursor-pointer"
+                      >
+                        {cloudJsonExpanded ? '▲ Collapse JSON' : '▼ Expand Complete JSON'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyText('cloudDecryptedJson', result.rawDecryptedJson || JSON.stringify(result.rawDecryptedConfig || cd, null, 2))}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-mono cursor-pointer"
+                      >
+                        {copiedKey === 'cloudDecryptedJson' ? 'Copied!' : 'Copy JSON'}
+                      </button>
+                    </div>
+                  </div>
+                  {cloudJsonExpanded ? (
+                    <pre className="p-3 rounded-lg bg-[#020617] border border-slate-800 text-[11px] font-mono text-slate-200 overflow-x-auto max-h-[450px]">
+                      {result.rawDecryptedJson || JSON.stringify(result.rawDecryptedConfig || cd, null, 2)}
+                    </pre>
+                  ) : (
+                    <div
+                      onClick={() => setCloudJsonExpanded(true)}
+                      className="p-3 rounded-lg bg-[#020617] border border-slate-800/80 text-[11px] font-mono text-slate-400 cursor-pointer hover:border-cyan-500/50 transition flex items-center justify-between"
+                    >
+                      <span>Click to inspect full decrypted JSON configuration parameters...</span>
+                      <span className="text-cyan-400 font-bold">Show JSON &gt;</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
