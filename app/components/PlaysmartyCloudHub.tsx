@@ -2,6 +2,18 @@
 
 import React, { useState, useEffect } from 'react';
 
+export interface PlaysmartyCloudEntry {
+  code: string;
+  fullUrl: string;
+  label: string;
+  protocol: 'v2ray' | 'ssh' | 'slowdns' | 'auto';
+  carrier?: string;
+  addedAt: string;
+  status: 'active' | 'burned_or_expired' | 'unverified';
+  statusMessage?: string;
+  lastChecked?: string;
+}
+
 interface PlaysmartyStatus {
   code: string;
   fullUrl: string;
@@ -10,13 +22,6 @@ interface PlaysmartyStatus {
   message: string;
   checkedAt: string;
   burnPolicy?: string;
-  expiresAt?: number;
-}
-
-interface RecentCheck {
-  code: string;
-  status: 'active' | 'burned_or_expired';
-  checkedAt: string;
 }
 
 interface PlaysmartyCloudHubProps {
@@ -24,66 +29,84 @@ interface PlaysmartyCloudHubProps {
   onUploadFileClick: () => void;
 }
 
+const DEFAULT_PRESET_CLOUDS: PlaysmartyCloudEntry[] = [
+  {
+    code: 'MlsZfm',
+    fullUrl: 'https://link.playsmarty.uk/MlsZfm',
+    label: 'Playsmarty Cloud Outbound (#MlsZfm)',
+    protocol: 'v2ray',
+    carrier: 'Tanzania Multi-ISP',
+    addedAt: 'Live Stream',
+    status: 'unverified',
+    statusMessage: 'Ready for instant verification & inspection',
+  },
+  {
+    code: 'klSGZo',
+    fullUrl: 'https://link.playsmarty.uk/klSGZo',
+    label: 'VIP Xray-Core VLESS (HTTP Custom)',
+    protocol: 'v2ray',
+    carrier: 'Vodacom / Tigo / Airtel',
+    addedAt: 'Verified Active',
+    status: 'active',
+    statusMessage: 'Mode #9 (V2Ray Xray-Core • libaio.so)',
+  },
+  {
+    code: 'loJXo5',
+    fullUrl: 'https://link.playsmarty.uk/loJXo5',
+    label: 'HTTP Custom Cloud Direct',
+    protocol: 'auto',
+    carrier: 'Universal Cloud',
+    addedAt: 'Live Stream',
+    status: 'unverified',
+    statusMessage: 'Ready to verify',
+  },
+];
+
 export default function PlaysmartyCloudHub({
   onLoadAndVerify,
   onUploadFileClick,
 }: PlaysmartyCloudHubProps) {
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [inputCode, setInputCode] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
+  const [inputLabel, setInputLabel] = useState<string>('');
+  const [inputCarrier, setInputCarrier] = useState<string>('Universal Multi-ISP');
   const [selectedProtocol, setSelectedProtocol] = useState<'v2ray' | 'ssh' | 'slowdns' | 'auto'>('v2ray');
+  const [loading, setLoading] = useState<boolean>(false);
+  const [probingAll, setProbingAll] = useState<boolean>(false);
   const [currentStatus, setCurrentStatus] = useState<PlaysmartyStatus | null>(null);
-  const [recentChecks, setRecentChecks] = useState<RecentCheck[]>([]);
+  const [cloudStream, setCloudStream] = useState<PlaysmartyCloudEntry[]>(DEFAULT_PRESET_CLOUDS);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'v2ray' | 'ssh' | 'active'>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [showAddForm, setShowAddForm] = useState<boolean>(false);
 
-  // Expiration countdown in seconds for active links
-  const [timeLeftSec, setTimeLeftSec] = useState<number | null>(null);
-
-  // Load recent checks from localStorage
+  // Load cloud stream from localStorage on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('tweve_recent_playsmarty_checks');
+      const saved = localStorage.getItem('tweve_playsmarty_cloud_stream');
       if (saved) {
-        setRecentChecks(JSON.parse(saved));
+        const parsed: PlaysmartyCloudEntry[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Merge preset clouds with saved clouds, preventing duplicates by code
+          const merged = [...parsed];
+          for (const def of DEFAULT_PRESET_CLOUDS) {
+            if (!merged.some(m => m.code.toLowerCase() === def.code.toLowerCase())) {
+              merged.push(def);
+            }
+          }
+          setCloudStream(merged);
+        }
       }
     } catch {}
   }, []);
 
-  // Save recent checks to localStorage
-  const saveRecentCheck = (code: string, status: 'active' | 'burned_or_expired') => {
-    setRecentChecks(prev => {
-      const filtered = prev.filter(c => c.code.toLowerCase() !== code.toLowerCase());
-      const updated: RecentCheck[] = [
-        { code, status, checkedAt: new Date().toLocaleTimeString() },
-        ...filtered.slice(0, 7),
-      ];
-      try {
-        localStorage.setItem('tweve_recent_playsmarty_checks', JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
+  // Save cloud stream to localStorage
+  const saveStream = (newStream: PlaysmartyCloudEntry[]) => {
+    setCloudStream(newStream);
+    try {
+      localStorage.setItem('tweve_playsmarty_cloud_stream', JSON.stringify(newStream));
+    } catch {}
   };
-
-  // Timer countdown hook
-  useEffect(() => {
-    if (!currentStatus?.active) {
-      setTimeLeftSec(null);
-      return;
-    }
-    // Set 30 minute default countdown if not provided
-    let remaining = 30 * 60;
-    setTimeLeftSec(remaining);
-    const interval = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        clearInterval(interval);
-        setTimeLeftSec(0);
-      } else {
-        setTimeLeftSec(remaining);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [currentStatus]);
 
   const copyText = (key: string, text: string) => {
     if (navigator.clipboard) {
@@ -93,363 +116,563 @@ export default function PlaysmartyCloudHub({
     }
   };
 
+  const extractCleanCode = (raw: string): string => {
+    const trimmed = raw.trim();
+    const urlMatch = trimmed.match(/link\.playsmarty\.uk\/([a-zA-Z0-9_-]+)/i);
+    if (urlMatch) return urlMatch[1];
+    return trimmed.replace(/[^a-zA-Z0-9_-]/g, '');
+  };
+
+  // Check live status of an individual shortcode
+  const probeStatus = async (code: string): Promise<PlaysmartyStatus> => {
+    const cleanCode = extractCleanCode(code);
+    const fullUrl = `https://link.playsmarty.uk/${cleanCode}`;
+
+    // 1. Try local server-side API
+    try {
+      const resp = await fetch(`/api/playsmarty?code=${encodeURIComponent(cleanCode)}`, {
+        cache: 'no-store',
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        return {
+          code: cleanCode,
+          fullUrl,
+          active: Boolean(data.active),
+          status: data.status || (data.active ? 'active' : 'burned_or_expired'),
+          message: data.message || (data.active ? 'Live & Active on Playsmarty' : 'Burned / Expired on Playsmarty'),
+          checkedAt: new Date().toISOString(),
+          burnPolicy: data.burnPolicy,
+        };
+      }
+    } catch {}
+
+    // 2. Direct client fallback
+    try {
+      const directResp = await fetch(`https://link.playsmarty.uk/api/stats/${encodeURIComponent(cleanCode)}`, {
+        cache: 'no-store',
+      });
+      if (directResp.ok) {
+        const stats = await directResp.json();
+        return {
+          code: cleanCode,
+          fullUrl,
+          active: Boolean(stats.active),
+          status: stats.active ? 'active' : 'burned_or_expired',
+          message: stats.active ? 'Live & Active — Waiting to be opened' : 'Opened or Expired (30m limit)',
+          checkedAt: new Date().toISOString(),
+        };
+      } else if (directResp.status === 404) {
+        return {
+          code: cleanCode,
+          fullUrl,
+          active: false,
+          status: 'burned_or_expired',
+          message: 'Opened or Expired — Downloaded once or timed out (30 mins)',
+          checkedAt: new Date().toISOString(),
+        };
+      }
+    } catch {}
+
+    return {
+      code: cleanCode,
+      fullUrl,
+      active: false,
+      status: 'network_error',
+      message: 'Could not connect directly to link.playsmarty.uk',
+      checkedAt: new Date().toISOString(),
+    };
+  };
+
+  // Handle single probe from input
   const handleCheckStatus = async (overrideCode?: string) => {
     const raw = (overrideCode || inputCode).trim();
     if (!raw) return;
-
-    let cleanCode = raw;
-    const urlMatch = raw.match(/link\.playsmarty\.uk\/([a-zA-Z0-9_-]+)/i);
-    if (urlMatch) {
-      cleanCode = urlMatch[1];
-    } else {
-      cleanCode = cleanCode.replace(/[^a-zA-Z0-9_-]/g, '');
-    }
-
+    const cleanCode = extractCleanCode(raw);
     if (!cleanCode) return;
 
     setLoading(true);
     setCurrentStatus(null);
 
     try {
-      // 1. Try local server-side API first
-      let data: PlaysmartyStatus | null = null;
-      try {
-        const resp = await fetch(`/api/playsmarty?code=${encodeURIComponent(cleanCode)}`, {
-          cache: 'no-store',
-        });
-        if (resp.ok) {
-          data = await resp.json();
-        }
-      } catch {}
+      const statusData = await probeStatus(cleanCode);
+      setCurrentStatus(statusData);
 
-      // 2. Fallback to direct client fetch if server API is unavailable
-      if (!data) {
-        try {
-          const directResp = await fetch(`https://link.playsmarty.uk/api/stats/${encodeURIComponent(cleanCode)}`, {
-            cache: 'no-store',
-          });
-          if (directResp.ok) {
-            const stats = await directResp.json();
-            data = {
-              code: cleanCode,
-              fullUrl: `https://link.playsmarty.uk/${cleanCode}`,
-              active: Boolean(stats.active),
-              status: stats.active ? 'active' : 'burned_or_expired',
-              message: stats.active
-                ? 'Live & Active — Waiting to be opened'
-                : 'Opened or Expired',
-              checkedAt: new Date().toISOString(),
-            };
-          } else if (directResp.status === 404) {
-            data = {
-              code: cleanCode,
-              fullUrl: `https://link.playsmarty.uk/${cleanCode}`,
-              active: false,
-              status: 'burned_or_expired',
-              message: 'Opened or Expired — File already downloaded once or expired after 30 minutes.',
-              checkedAt: new Date().toISOString(),
-            };
-          }
-        } catch (e: any) {
-          data = {
-            code: cleanCode,
-            fullUrl: `https://link.playsmarty.uk/${cleanCode}`,
-            active: false,
-            status: 'network_error',
-            message: 'Could not connect directly to link.playsmarty.uk',
-            checkedAt: new Date().toISOString(),
-          };
-        }
-      }
-
-      if (data) {
-        setCurrentStatus(data);
-        if (data.status === 'active' || data.status === 'burned_or_expired') {
-          saveRecentCheck(data.code, data.status);
-        }
-      }
+      // Update the stream entry if present
+      saveStream(
+        cloudStream.map(entry =>
+          entry.code.toLowerCase() === cleanCode.toLowerCase()
+            ? {
+                ...entry,
+                status: statusData.active ? 'active' : 'burned_or_expired',
+                statusMessage: statusData.message,
+                lastChecked: new Date().toLocaleTimeString(),
+              }
+            : entry
+        )
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const formatTimer = (sec: number | null) => {
-    if (sec === null) return '--:--';
-    if (sec <= 0) return '00:00 (Expired)';
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  // Add a new cloud to the persistent stream
+  const handleAddCloudToStream = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanCode = extractCleanCode(inputCode);
+    if (!cleanCode) return;
+
+    const fullUrl = `https://link.playsmarty.uk/${cleanCode}`;
+    const newEntry: PlaysmartyCloudEntry = {
+      code: cleanCode,
+      fullUrl,
+      label: inputLabel.trim() || `Playsmarty Cloud #${cleanCode}`,
+      protocol: selectedProtocol,
+      carrier: inputCarrier.trim() || 'Universal Multi-ISP',
+      addedAt: new Date().toLocaleDateString(),
+      status: 'unverified',
+      statusMessage: 'Newly added to stream',
+    };
+
+    const updated = [
+      newEntry,
+      ...cloudStream.filter(c => c.code.toLowerCase() !== cleanCode.toLowerCase()),
+    ];
+    saveStream(updated);
+    setInputCode('');
+    setInputLabel('');
+    setShowAddForm(false);
+
+    // Auto-probe the newly added link
+    handleCheckStatus(cleanCode);
   };
 
+  // Batch probe all clouds in stream
+  const handleProbeAll = async () => {
+    setProbingAll(true);
+    try {
+      const updated = await Promise.all(
+        cloudStream.map(async entry => {
+          try {
+            const res = await probeStatus(entry.code);
+            return {
+              ...entry,
+              status: (res.active ? 'active' : 'burned_or_expired') as 'active' | 'burned_or_expired',
+              statusMessage: res.message,
+              lastChecked: new Date().toLocaleTimeString(),
+            };
+          } catch {
+            return entry;
+          }
+        })
+      );
+      saveStream(updated);
+    } finally {
+      setProbingAll(false);
+    }
+  };
+
+  // Remove a cloud from stream
+  const handleRemoveCloud = (code: string) => {
+    const updated = cloudStream.filter(c => c.code.toLowerCase() !== code.toLowerCase());
+    saveStream(updated);
+  };
+
+  // Copy full stream summary
+  const handleCopyAllClouds = () => {
+    const summary = cloudStream
+      .map(
+        (c, idx) =>
+          `${idx + 1}. [${c.label}] ${c.fullUrl} • Protocol: ${c.protocol.toUpperCase()} • Status: ${c.status.toUpperCase()}`
+      )
+      .join('\n');
+    copyText('copyAllClouds', summary);
+  };
+
+  // Generate permanent share link for this verification page
+  const getPermanentShareLink = (code: string) => {
+    const base = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${base}/?cloud=${encodeURIComponent(`https://link.playsmarty.uk/${code}`)}`;
+  };
+
+  // Filter and search logic
+  const filteredClouds = cloudStream.filter(entry => {
+    const matchesSearch =
+      entry.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      entry.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (entry.carrier && entry.carrier.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    if (!matchesSearch) return false;
+    if (activeFilter === 'v2ray') return entry.protocol === 'v2ray';
+    if (activeFilter === 'ssh') return entry.protocol === 'ssh';
+    if (activeFilter === 'active') return entry.status === 'active';
+    return true;
+  });
+
+  const activeCount = cloudStream.filter(c => c.status === 'active').length;
+
   return (
-    <div className="w-full bg-slate-900/90 border border-indigo-500/30 rounded-2xl p-4 sm:p-6 shadow-xl space-y-4">
-      {/* Header bar */}
-      <div className="flex items-center justify-between border-b border-indigo-500/20 pb-3 flex-wrap gap-2">
+    <div className="w-full bg-slate-900/90 border border-indigo-500/30 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5">
+      {/* 1. Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-indigo-500/20 pb-4 gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white font-black shadow-md shadow-indigo-500/20">
-            <span>⚡</span>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-500 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-indigo-500/30 shrink-0">
+            <span>☁️</span>
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-extrabold text-white text-sm sm:text-base tracking-wide">
-                HTTP Custom Cloud Hub &middot; link.playsmarty.uk
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-extrabold text-white text-base sm:text-lg tracking-wide">
+                Playsmarty Cloud Stream &middot; link.playsmarty.uk
               </h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                Official Cloud Gateway
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                {cloudStream.length} Clouds Registered
               </span>
+              {activeCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {activeCount} Live Now
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Live status inspector, safe non-burning probe, and instant configuration verification.
+              Universal registry of all short clouds generated on <code className="text-cyan-300">link.playsmarty.uk</code>. Share, inspect, and verify without expiration.
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
-        >
-          {isExpanded ? 'Hide Hub ▲' : 'Show Hub ▼'}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-bold text-xs transition cursor-pointer shadow-md shadow-indigo-500/20 flex items-center gap-1.5"
+          >
+            <span>{showAddForm ? '✕ Close Form' : '＋ Add My Cloud Link'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyAllClouds}
+            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition cursor-pointer border border-slate-700 flex items-center gap-1.5"
+            title="Copy all cloud links and descriptions to clipboard"
+          >
+            <span>{copiedKey === 'copyAllClouds' ? '✓ Copied Stream!' : '📋 Share All'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition cursor-pointer"
+          >
+            {isExpanded ? 'Hide ▲' : 'Show ▼'}
+          </button>
+        </div>
       </div>
 
       {isExpanded && (
-        <div className="space-y-4 pt-1">
-          {/* Target Protocol Selector */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-slate-950/70 border border-slate-800">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-200">⚡ Configuration Protocol:</span>
-              <span className="text-[11px] text-slate-400">(Xray-Core V2Ray vs SSH vs SlowDNS)</span>
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="space-y-5">
+          {/* 2. Add New Cloud Form Drawer */}
+          {showAddForm && (
+            <form
+              onSubmit={handleAddCloudToStream}
+              className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-950/40 via-slate-950/90 to-purple-950/40 border border-indigo-500/40 space-y-3.5 shadow-xl animate-in fade-in duration-200"
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-indigo-500/20">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
+                  <span>＋</span> Publish New Cloud to Verification Stream
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  Adds to local stream & generates permanent verifiable link
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-[11px] font-bold text-slate-300 block">
+                    Shortlink or Code: <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={inputCode}
+                    onChange={e => setInputCode(e.target.value)}
+                    placeholder="e.g. MlsZfm or https://link.playsmarty.uk/MlsZfm"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-400 focus:outline-none text-slate-100 font-mono text-xs placeholder:text-slate-600"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-300 block">
+                    Protocol Mode:
+                  </label>
+                  <select
+                    value={selectedProtocol}
+                    onChange={e => setSelectedProtocol(e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 font-bold text-xs focus:outline-none focus:border-indigo-400 cursor-pointer"
+                  >
+                    <option value="v2ray">⚡ V2Ray (Xray-Core)</option>
+                    <option value="ssh">🔐 SSH Tunnel</option>
+                    <option value="slowdns">📡 SlowDNS (DNSTT)</option>
+                    <option value="auto">🔄 Auto Detect</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-300 block">
+                    Nickname / Description:
+                  </label>
+                  <input
+                    type="text"
+                    value={inputLabel}
+                    onChange={e => setInputLabel(e.target.value)}
+                    placeholder="e.g. Vodacom 5G Fast Xray VLESS"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-400 focus:outline-none text-slate-100 text-xs placeholder:text-slate-600"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-300 block">
+                    Target Carrier / Network:
+                  </label>
+                  <select
+                    value={inputCarrier}
+                    onChange={e => setInputCarrier(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-indigo-400 cursor-pointer"
+                  >
+                    <option value="Universal Multi-ISP">Universal Multi-ISP</option>
+                    <option value="Vodacom Tanzania">Vodacom Tanzania</option>
+                    <option value="Airtel Tanzania">Airtel Tanzania</option>
+                    <option value="Tigo Tanzania">Tigo Tanzania</option>
+                    <option value="Halotel Tanzania">Halotel Tanzania</option>
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    disabled={!inputCode.trim()}
+                    className="w-full py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 text-slate-950 font-black text-xs transition cursor-pointer shadow-md shadow-emerald-500/20"
+                  >
+                    🚀 Publish &amp; Verify Now
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          {/* 3. Stream Controls: Filter & Search Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-950/70 border border-slate-800">
+            {/* Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
               {[
-                { id: 'v2ray', label: '☁️ V2Ray (Xray-Core)' },
-                { id: 'ssh', label: '🔐 SSH Tunnel' },
-                { id: 'slowdns', label: '📡 SlowDNS (DNSTT)' },
-                { id: 'auto', label: '🔄 Auto Detect' },
-              ].map(p => (
+                { id: 'all', label: `All (${cloudStream.length})` },
+                { id: 'v2ray', label: `⚡ V2Ray (${cloudStream.filter(c => c.protocol === 'v2ray').length})` },
+                { id: 'ssh', label: `🔐 SSH (${cloudStream.filter(c => c.protocol === 'ssh').length})` },
+                { id: 'active', label: `🟢 Live (${cloudStream.filter(c => c.status === 'active').length})` },
+              ].map(f => (
                 <button
-                  key={p.id}
+                  key={f.id}
                   type="button"
-                  onClick={() => setSelectedProtocol(p.id as any)}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                    selectedProtocol === p.id
-                      ? 'bg-gradient-to-r from-indigo-500 to-cyan-500 text-white shadow-md shadow-indigo-500/25'
-                      : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                  onClick={() => setActiveFilter(f.id as any)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                    activeFilter === f.id
+                      ? 'bg-indigo-500 text-white shadow-sm'
+                      : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  {p.label}
+                  {f.label}
                 </button>
               ))}
             </div>
-          </div>
 
-          {/* Input & Check Actions */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-300 block">
-              Enter Coldplay Shortlink or Shortcode:
-            </label>
-            <div className="flex flex-col sm:flex-row gap-2.5">
-              <div className="relative flex-1">
+            {/* Search Input & Probe All Action */}
+            <div className="flex items-center gap-2">
+              <div className="relative">
                 <input
                   type="text"
-                  value={inputCode}
-                  onChange={e => setInputCode(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleCheckStatus()}
-                  placeholder="e.g. loJXo5 or https://link.playsmarty.uk/loJXo5"
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-700 focus:border-indigo-400 focus:outline-none text-slate-100 font-mono text-sm placeholder:text-slate-600"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search code or name..."
+                  className="w-40 sm:w-56 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-400"
                 />
-                {inputCode && (
+                {searchQuery && (
                   <button
                     type="button"
-                    onClick={() => setInputCode('')}
-                    className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 text-sm font-bold"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1.5 text-slate-500 hover:text-slate-300 text-xs font-bold"
                   >
-                    &times;
+                    ✕
                   </button>
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={loading || !inputCode.trim()}
-                  onClick={() => handleCheckStatus()}
-                  className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs sm:text-sm transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/30"
-                >
-                  {loading ? (
-                    <>
-                      <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Probing...
-                    </>
-                  ) : (
-                    <>
-                      <span>🔍</span> Check Live Status
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!inputCode.trim()}
-                  onClick={() => onLoadAndVerify(`https://link.playsmarty.uk/${inputCode.replace(/.*link\.playsmarty\.uk\//i, '').trim()}`, selectedProtocol)}
-                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 text-slate-950 font-black text-xs sm:text-sm transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20"
-                >
-                  <span>⚡</span> Verify Now
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={probingAll}
+                onClick={handleProbeAll}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-xs font-bold text-cyan-300 border border-cyan-500/30 transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                title="Run non-burning live status checks across all registered cloud links"
+              >
+                {probingAll ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
+                    <span>Checking...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔄</span> Check All
+                  </>
+                )}
+              </button>
             </div>
-            <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
-              <span>💡</span>
-              <span>
-                <strong>&quot;Check Live Status&quot;</strong> uses a zero-download probe that checks if the link is active <strong>WITHOUT burning it</strong>.
-              </span>
-            </p>
           </div>
 
-          {/* Live Status Result Card */}
-          {currentStatus && (
-            <div
-              className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-                currentStatus.active
-                  ? 'bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-teal-950/40 border-emerald-500/50 shadow-emerald-950/40 shadow-xl'
-                  : 'bg-gradient-to-r from-rose-950/40 via-slate-900/90 to-rose-950/30 border-rose-500/50 shadow-rose-950/40 shadow-xl'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-700/60 gap-3">
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={`w-3.5 h-3.5 rounded-full ${
-                      currentStatus.active
-                        ? 'bg-emerald-400 shadow-md shadow-emerald-400 animate-pulse'
-                        : 'bg-rose-500 shadow-md shadow-rose-500'
-                    }`}
-                  />
-                  <div>
-                    <h4 className="font-extrabold text-white text-sm sm:text-base">
-                      {currentStatus.active ? '🟢 Link is LIVE & Active' : '🔴 Link is Opened or Expired'}
-                    </h4>
-                    <span className="font-mono text-xs text-indigo-300">
-                      {currentStatus.fullUrl}
-                    </span>
-                  </div>
-                </div>
+          {/* 4. Cloud Stream Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {filteredClouds.map(entry => {
+              const isLive = entry.status === 'active';
+              const isBurned = entry.status === 'burned_or_expired';
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  {currentStatus.active && (
-                    <div className="px-3 py-1 rounded-full bg-slate-950/90 border border-emerald-500/40 flex items-center gap-1.5 text-xs text-emerald-300 font-mono font-bold">
-                      <span>⏱️ Est. TTL:</span>
-                      <span>{formatTimer(timeLeftSec)}</span>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => copyText('fullLink', currentStatus.fullUrl)}
-                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 transition cursor-pointer"
-                  >
-                    {copiedKey === 'fullLink' ? 'Copied!' : 'Copy Link'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Status Details */}
-              <div className="pt-3 text-xs space-y-3">
-                <p className="text-slate-200 leading-relaxed">
-                  {currentStatus.message}
-                </p>
-
-                {currentStatus.active ? (
-                  <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <span className="font-bold text-emerald-300 block">
-                        Safe to Verify &amp; Capture:
+              return (
+                <div
+                  key={entry.code}
+                  className={`p-4 rounded-2xl border transition-all space-y-3 bg-gradient-to-b ${
+                    isLive
+                      ? 'from-emerald-950/25 via-slate-950/90 to-slate-900/90 border-emerald-500/40 shadow-lg shadow-emerald-950/20'
+                      : isBurned
+                      ? 'from-rose-950/20 via-slate-950/90 to-slate-900/90 border-slate-800'
+                      : 'from-slate-900/90 to-slate-950/90 border-slate-800 hover:border-indigo-500/40'
+                  }`}
+                >
+                  {/* Card Top: Badges & Remove */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-black uppercase flex items-center gap-1 ${
+                          isLive
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : isBurned
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            isLive
+                              ? 'bg-emerald-400 animate-pulse'
+                              : isBurned
+                              ? 'bg-rose-400'
+                              : 'bg-slate-500'
+                          }`}
+                        />
+                        {isLive ? 'LIVE' : isBurned ? 'EXPIRED' : 'READY'}
                       </span>
-                      <span className="text-slate-300 text-[11px]">
-                        The file has not yet been consumed. Verify now to extract authentic SSH, SNI, and SlowDNS keys and save as Permanent Link.
+
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
+                        {entry.protocol === 'v2ray' ? '⚡ V2Ray' : '🔐 SSH'}
                       </span>
+
+                      {entry.carrier && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800/80 text-slate-300 truncate max-w-[110px]">
+                          {entry.carrier}
+                        </span>
+                      )}
                     </div>
+
                     <button
                       type="button"
-                      onClick={() => onLoadAndVerify(currentStatus.fullUrl, selectedProtocol)}
-                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shrink-0 transition cursor-pointer shadow-md shadow-emerald-500/30"
+                      onClick={() => handleRemoveCloud(entry.code)}
+                      className="text-slate-600 hover:text-rose-400 text-xs transition cursor-pointer p-1"
+                      title="Remove from list"
                     >
-                      🚀 Verify &amp; Decrypt Config Now
+                      ✕
                     </button>
                   </div>
-                ) : (
-                  <div className="p-3 rounded-xl bg-slate-950/70 border border-rose-500/30 space-y-2">
-                    <span className="font-bold text-rose-300 block">
-                      Why is this link burned?
-                    </span>
-                    <p className="text-slate-300 text-[11px] leading-relaxed">
-                      Coldplay shortlinks strictly enforce <strong>&quot;Deleted the moment it is opened&quot;</strong> and auto-expire after <strong>30 minutes</strong>. Once HTTP Custom downloaded it or 30 minutes passed, the remote server erased the file.
-                    </p>
-                    <div className="flex items-center gap-2 pt-1 flex-wrap">
+
+                  {/* Card Mid: Title & Link */}
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-white text-sm truncate" title={entry.label}>
+                      {entry.label}
+                    </h4>
+                    <div className="flex items-center justify-between gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800/80">
+                      <span className="font-mono text-cyan-300 font-bold text-xs truncate">
+                        https://link.playsmarty.uk/{entry.code}
+                      </span>
                       <button
                         type="button"
-                        onClick={onUploadFileClick}
-                        className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition cursor-pointer"
+                        onClick={() => copyText(`link_${entry.code}`, entry.fullUrl)}
+                        className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0 cursor-pointer"
                       >
-                        📁 Upload Original .hc File
+                        {copiedKey === `link_${entry.code}` ? 'Copied!' : 'Copy'}
                       </button>
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* Quick Recent Checks Bar */}
-          {recentChecks.length > 0 && (
-            <div className="pt-1">
-              <div className="flex items-center justify-between pb-1.5">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Recently Inspected Playsmarty Shortlinks:
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    localStorage.removeItem('tweve_recent_playsmarty_checks');
-                    setRecentChecks([]);
-                  }}
-                  className="text-[10px] text-slate-500 hover:text-slate-300"
-                >
-                  Clear History
-                </button>
-              </div>
+                  {/* Card Status Description */}
+                  {entry.statusMessage && (
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      {entry.statusMessage}
+                    </p>
+                  )}
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {recentChecks.map(item => (
-                  <div
-                    key={item.code}
-                    className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-slate-800 flex items-center gap-1.5 text-xs font-mono"
-                  >
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        item.status === 'active' ? 'bg-emerald-400' : 'bg-rose-500'
-                      }`}
-                    />
+                  {/* Card Bottom: Action Buttons */}
+                  <div className="pt-1 grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setInputCode(item.code);
-                        handleCheckStatus(item.code);
-                      }}
-                      className="text-slate-200 hover:text-indigo-300 font-bold"
+                      onClick={() => onLoadAndVerify(entry.fullUrl, entry.protocol)}
+                      className="w-full py-2 px-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition cursor-pointer flex items-center justify-center gap-1 shadow-md shadow-emerald-500/20"
                     >
-                      {item.code}
+                      <span>⚡</span> Verify Now
                     </button>
-                    <span className="text-[10px] text-slate-500">
-                      ({item.status === 'active' ? 'Live' : 'Burned'})
-                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => copyText(`perm_${entry.code}`, getPermanentShareLink(entry.code))}
+                      className="w-full py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition cursor-pointer border border-slate-700 flex items-center justify-center gap-1"
+                      title="Share a permanent link that opens and verifies this config directly"
+                    >
+                      <span>{copiedKey === `perm_${entry.code}` ? '✓ Copied!' : '🔗 Share Link'}</span>
+                    </button>
                   </div>
-                ))}
-              </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {filteredClouds.length === 0 && (
+            <div className="p-8 text-center rounded-2xl bg-slate-950/50 border border-slate-800 space-y-2">
+              <span className="text-2xl">🔍</span>
+              <p className="text-xs text-slate-400 font-medium">
+                No cloud configurations matched your search.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setActiveFilter('all');
+                }}
+                className="text-xs text-indigo-400 hover:underline cursor-pointer"
+              >
+                Reset filters
+              </button>
             </div>
           )}
+
+          {/* 5. Safe Preservation Footer Notice */}
+          <div className="p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-300">
+            <div className="flex items-center gap-2">
+              <span className="text-base shrink-0">🛡️</span>
+              <span>
+                <strong>Zero-Burn Guarantee:</strong> All status checks perform non-destructive header probes. Your configurations will never be burned or consumed by verifying them on this website.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={onUploadFileClick}
+              className="px-3 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 font-bold shrink-0 cursor-pointer"
+            >
+              📁 Upload Backup .hc File
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
 }
-
