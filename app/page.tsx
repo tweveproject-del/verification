@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { inspectConfigLocally } from './inspector-engine';
 import TanzaniaCarrierHub from './components/TanzaniaCarrierHub';
+import PlaysmartyCloudHub from './components/PlaysmartyCloudHub';
 
 type ValidationCheck = {
   id: string;
@@ -1130,6 +1131,15 @@ export default function ConfigInspectorPage() {
           </button>
         </div>
       </header>
+
+      {/* HTTP Custom (link.playsmarty.uk) Cloud Hub & Live Status Monitor */}
+      <PlaysmartyCloudHub
+        onLoadAndVerify={(url) => {
+          setInput(url);
+          handleInspect(url);
+        }}
+        onUploadFileClick={() => fileInputRef.current?.click()}
+      />
 
       {/* Tanzania Carrier Presets & Host Line Sync Hub */}
       <TanzaniaCarrierHub
