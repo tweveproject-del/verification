@@ -3610,80 +3610,29 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
           ? 'saya1.halotel.co.tz'
           : 'halotel.co.tz';
 
-  // Fallbacks applied only if authentic data was missing
-  const sshHost = realSshHost || (isAirtel
-    ? '154.118.224.50'
-    : isVodacom
-      ? '41.222.180.2'
-      : isTigo
-        ? '196.43.100.5'
-        : isSaya
-          ? '154.118.224.50'
-          : 'halotel.co.tz');
+  const hasExtractedRealData = Boolean(realSshHost || realSni || realPayload || realSlowDnsPubkey);
 
-  const sshPort = realSshPort || '443';
-  const sshUser = realSshUser || (isAirtel
-    ? 'airtel_user'
-    : isVodacom
-      ? 'voda_5g'
-      : isTigo
-        ? 'tigo_fast'
-        : isSaya
-          ? 'saya1_usr'
-          : isHalotel
-            ? 'halotel_trial'
-            : 'http_custom');
+  // Use only authentic data — NEVER fabricate fake dummy Halotel/Vodacom carrier values
+  const sshHost = realSshHost || (hasExtractedRealData ? '' : '🔒 Encrypted in .hc container');
+  const sshPort = realSshPort || (realSshHost ? '22' : '');
+  const sshUser = realSshUser || '';
+  const sshPass = realSshPass || '';
 
-  const sshPass = realSshPass || (isAirtel
-    ? 'airtel_tz_2026'
-    : isVodacom
-      ? 'voda_tz_2026'
-      : isTigo
-        ? 'tigo_tz_2026'
-        : isSaya
-          ? 'saya_tz_2026'
-          : 'halotel_free_net');
+  const proxyHost = realProxyHost || (realProxy.includes(':') ? realProxy.split(':')[0] : realProxy) || '';
+  const proxyPort = realProxyPort || (realProxy.includes(':') ? realProxy.split(':')[1] : (proxyHost ? '8080' : ''));
+  const remoteProxy = realProxy || (proxyHost ? `${proxyHost}:${proxyPort}` : '');
 
-  const proxyHost = realProxyHost || (realProxy.includes(':') ? realProxy.split(':')[0] : '') || (isAirtel
-    ? '154.118.224.50'
-    : isVodacom
-      ? '41.222.180.2'
-      : isTigo
-        ? '196.43.100.5'
-        : '10.10.10.10');
-
-  const proxyPort = realProxyPort || (realProxy.includes(':') ? realProxy.split(':')[1] : '8080');
-  const remoteProxy = realProxy || `${proxyHost}:${proxyPort}`;
-
-  const sni = realSni || targetServer;
-  const payload = realPayload || (isAirtel
-    ? 'GET / HTTP/1.1[crlf]Host: selfcare.airtel.co.tz[crlf]X-Online-Host: selfcare.airtel.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]'
-    : isVodacom
-      ? 'GET / HTTP/1.1[crlf]Host: myvodacom.vodacom.co.tz[crlf]X-Online-Host: myvodacom.vodacom.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]'
-      : isTigo
-        ? 'GET / HTTP/1.1[crlf]Host: tigopesa.tigo.co.tz[crlf]X-Online-Host: tigopesa.tigo.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]'
-        : isSaya
-          ? 'GET / HTTP/1.1[crlf]Host: halotel.co.tz[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf]Sec-WebSocket-Key: [random][crlf][crlf]'
-          : 'CONNECT [host_port] HTTP/1.1[crlf]Host: halotel.co.tz[crlf]X-Online-Host: halotel.co.tz[crlf]X-Forward-Host: halotel.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]');
+  const sni = realSni || '';
+  const payload = realPayload || '';
 
   const slowDnsEnabled = realSlowDnsEnabled || Boolean(realSlowDnsPubkey);
-  const slowDnsPubkey = realSlowDnsPubkey || (isAirtel
-    ? '0a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef'
-    : isSaya
-      ? '9c4e201f8d5a73b2a1c0e3f4d5b6a789e0f1a2b3c4d5e6f708192a3b4c5d6e7f'
-      : 'b7f94e1c2a03d8519e4a3c5d6e7f8091a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7');
+  const slowDnsPubkey = realSlowDnsPubkey || '';
+  const slowDnsNameserver = realSlowDnsNameserver || '';
+  const slowDnsResolver = realSlowDnsResolver || (slowDnsPubkey ? '1.1.1.1' : '');
 
-  const slowDnsNameserver = realSlowDnsNameserver || (isAirtel
-    ? 'ns-airtel.tweve.net'
-    : isVodacom
-      ? 'ns-voda.tweve.net'
-      : isTigo
-        ? 'ns-tigo.tweve.net'
-        : isSaya
-          ? 'ns-tz.saya1.net'
-          : 'ns-halotel.tweve.net');
-
-  const slowDnsResolver = realSlowDnsResolver || (isAirtel ? '41.222.180.2' : isSaya ? '8.8.8.8' : '1.1.1.1');
+  const containerStatus = hasExtractedRealData
+    ? 'Verified Authentic HTTP Custom (.hc) Container'
+    : '🔒 Encrypted HTTP Custom (.hc v5) Profile — Locked by App Security Cipher';
 
   let rawHexPreview = '';
   if (bytes && bytes.length > 0) {
@@ -3721,8 +3670,10 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
     hwid: realHwid,
     preventRoot: realPreventRoot,
     note: realNote,
-    containerStatus: 'Verified Authentic HTTP Custom (.hc) Container',
-    cipherMethod: parsedObj ? 'Cloud Sync Profile Container' : 'Multi-Key AES-128-ECB + SHA1 Keyring + 0x80 Byte Offset',
+    containerStatus,
+    cipherMethod: hasExtractedRealData
+      ? (parsedObj ? 'Cloud Sync Profile Container' : 'Multi-Key AES-128-ECB + SHA1 Keyring')
+      : '🔒 HTTP Custom v5 Security Envelope (Encrypted & Locked by Author)',
     matchingPrefixBytes: hasHcPrefix ? 286 : 0,
     rawHexPreview
   };
