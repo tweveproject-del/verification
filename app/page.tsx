@@ -776,6 +776,7 @@ export default function ConfigInspectorPage() {
   const [manualNameserver, setManualNameserver] = useState('');
   const [customCloudUrl, setCustomCloudUrl] = useState('');
   const [httpWeakProtocolTab, setHttpWeakProtocolTab] = useState<'openvpn' | 'ssh' | 'v2ray' | 'hysteria' | 'slowdns' | 'wireguard'>('openvpn');
+  const [protocolMode, setProtocolMode] = useState<'auto' | 'v2ray' | 'ssh' | 'slowdns'>('auto');
   const [activeProtocolTab, setActiveProtocolTab] = useState<
     'auto' | 'http_injector' | 'opentunnel' | 'hc' | 'npvs' | 'ssc' | 'creeb' | 'httpweak' | 'darktunnel' | 'hatunnel' | 'v2box' | 'netmod' | 'v2ray' | 'dnstt' | 'ssh_proxy' | 'hysteria2' | 'wireguard'
   >('auto');
@@ -852,10 +853,28 @@ export default function ConfigInspectorPage() {
     }
   };
 
-  const handleInspect = async (overrideInput?: string, fileName?: string) => {
+  const handleInspect = async (
+    overrideInput?: string,
+    overrideFileNameOrProto?: string,
+    overrideProtocol?: 'auto' | 'v2ray' | 'ssh' | 'slowdns'
+  ) => {
     const targetInput = overrideInput !== undefined ? overrideInput : input;
     if (!targetInput.trim()) return;
-    const effectiveFileName = fileName || importedFileInfo?.name || undefined;
+
+    let effectiveFileName = importedFileInfo?.name || undefined;
+    let effectiveProtocol = protocolMode;
+
+    if (overrideFileNameOrProto) {
+      if (['auto', 'v2ray', 'ssh', 'slowdns'].includes(overrideFileNameOrProto)) {
+        effectiveProtocol = overrideFileNameOrProto as any;
+      } else {
+        effectiveFileName = overrideFileNameOrProto;
+      }
+    }
+    if (overrideProtocol) {
+      effectiveProtocol = overrideProtocol;
+    }
+
     setLoading(true);
     setResult(null);
     try {
@@ -874,12 +893,17 @@ export default function ConfigInspectorPage() {
             manualSni: manualSni.trim() || undefined,
             manualNameserver: manualNameserver.trim() || undefined,
             customCloudUrl: customCloudUrl.trim() || undefined,
+            protocolMode: effectiveProtocol,
           }),
         });
         if (res.ok) {
           const data: InspectResponse = await res.json();
           setResult(data);
-          setActiveProtocolTab('auto');
+          if (effectiveProtocol === 'v2ray' || (data.connectionDetails?.v2ray?.present && !data.connectionDetails?.ssh?.present)) {
+            setActiveProtocolTab('v2ray');
+          } else {
+            setActiveProtocolTab('auto');
+          }
           return;
         }
       } catch {
@@ -897,9 +921,14 @@ export default function ConfigInspectorPage() {
         manualSni: manualSni.trim() || undefined,
         manualNameserver: manualNameserver.trim() || undefined,
         customCloudUrl: customCloudUrl.trim() || undefined,
+        protocolMode: effectiveProtocol,
       });
       setResult(data as InspectResponse);
-      setActiveProtocolTab('auto');
+      if (effectiveProtocol === 'v2ray' || (data.connectionDetails?.v2ray?.present && !data.connectionDetails?.ssh?.present)) {
+        setActiveProtocolTab('v2ray');
+      } else {
+        setActiveProtocolTab('auto');
+      }
     } catch (e: any) {
       setResult({ error: e?.message || 'Failed to inspect configuration' });
     } finally {
@@ -1134,9 +1163,12 @@ export default function ConfigInspectorPage() {
 
       {/* HTTP Custom (link.playsmarty.uk) Cloud Hub & Live Status Monitor */}
       <PlaysmartyCloudHub
-        onLoadAndVerify={(url) => {
+        onLoadAndVerify={(url, proto) => {
           setInput(url);
-          handleInspect(url);
+          if (proto && proto !== 'auto') {
+            setProtocolMode(proto);
+          }
+          handleInspect(url, undefined, proto);
         }}
         onUploadFileClick={() => fileInputRef.current?.click()}
       />
@@ -1366,6 +1398,40 @@ export default function ConfigInspectorPage() {
             placeholder="Paste Cloud Config UUID, NetMod URI (nm://, netmod://), V2Box URI (v2box://, chain://), CREEBINJ token, Dark Tunnel URI (darktunnel://), share URL (vless://, vmess://, ssc://), or drag & drop a config file (.v2box, .dark, .twt, .creeb, .hc, .npvs, .tnl, .ehi)..."
             className="input-textarea-modern"
           />
+        </div>
+
+        {/* Protocol Architecture Quick Selector */}
+        <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold">
+            <span>⚡ Configuration Protocol Architecture:</span>
+            <span className="text-[11px] text-slate-400 font-normal">(Xray-Core V2Ray / SSH / SlowDNS)</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {[
+              { id: 'auto', label: '🔄 Auto-Detect' },
+              { id: 'v2ray', label: '☁️ V2Ray (Xray-Core)' },
+              { id: 'ssh', label: '🔐 SSH Tunnel' },
+              { id: 'slowdns', label: '📡 SlowDNS (DNSTT)' },
+            ].map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  setProtocolMode(p.id as any);
+                  if (input.trim()) {
+                    handleInspect(input, undefined, p.id as any);
+                  }
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  protocolMode === p.id
+                    ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-slate-950 font-black shadow-md shadow-cyan-500/25'
+                    : 'bg-slate-950/80 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Options & Action Toolbar */}

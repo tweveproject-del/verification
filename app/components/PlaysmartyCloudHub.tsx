@@ -20,7 +20,7 @@ interface RecentCheck {
 }
 
 interface PlaysmartyCloudHubProps {
-  onLoadAndVerify: (url: string) => void;
+  onLoadAndVerify: (url: string, protocolMode?: 'v2ray' | 'ssh' | 'slowdns' | 'auto') => void;
   onUploadFileClick: () => void;
 }
 
@@ -31,6 +31,7 @@ export default function PlaysmartyCloudHub({
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [inputCode, setInputCode] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
+  const [selectedProtocol, setSelectedProtocol] = useState<'v2ray' | 'ssh' | 'slowdns' | 'auto'>('v2ray');
   const [currentStatus, setCurrentStatus] = useState<PlaysmartyStatus | null>(null);
   const [recentChecks, setRecentChecks] = useState<RecentCheck[]>([]);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -213,7 +214,36 @@ export default function PlaysmartyCloudHub({
       </div>
 
       {isExpanded && (
-        <div className="space-y-5 pt-1">
+        <div className="space-y-4 pt-1">
+          {/* Target Protocol Selector */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-200">⚡ Configuration Protocol:</span>
+              <span className="text-[11px] text-slate-400">(Xray-Core V2Ray vs SSH vs SlowDNS)</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { id: 'v2ray', label: '☁️ V2Ray (Xray-Core)' },
+                { id: 'ssh', label: '🔐 SSH Tunnel' },
+                { id: 'slowdns', label: '📡 SlowDNS (DNSTT)' },
+                { id: 'auto', label: '🔄 Auto Detect' },
+              ].map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setSelectedProtocol(p.id as any)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    selectedProtocol === p.id
+                      ? 'bg-gradient-to-r from-indigo-500 to-cyan-500 text-white shadow-md shadow-indigo-500/25'
+                      : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Input & Check Actions */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-300 block">
@@ -262,7 +292,7 @@ export default function PlaysmartyCloudHub({
                 <button
                   type="button"
                   disabled={!inputCode.trim()}
-                  onClick={() => onLoadAndVerify(`https://link.playsmarty.uk/${inputCode.replace(/.*link\.playsmarty\.uk\//i, '').trim()}`)}
+                  onClick={() => onLoadAndVerify(`https://link.playsmarty.uk/${inputCode.replace(/.*link\.playsmarty\.uk\//i, '').trim()}`, selectedProtocol)}
                   className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 text-slate-950 font-black text-xs sm:text-sm transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20"
                 >
                   <span>⚡</span> Verify Now
@@ -340,7 +370,7 @@ export default function PlaysmartyCloudHub({
                     </div>
                     <button
                       type="button"
-                      onClick={() => onLoadAndVerify(currentStatus.fullUrl)}
+                      onClick={() => onLoadAndVerify(currentStatus.fullUrl, selectedProtocol)}
                       className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shrink-0 transition cursor-pointer shadow-md shadow-emerald-500/30"
                     >
                       🚀 Verify &amp; Decrypt Config Now

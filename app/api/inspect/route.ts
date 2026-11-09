@@ -14,6 +14,7 @@ export async function POST(req: Request) {
       manualSni: body.manualSni,
       manualNameserver: body.manualNameserver,
       customCloudUrl: body.customCloudUrl,
+      protocolMode: body.protocolMode,
     });
     return NextResponse.json(result);
   } catch (err: any) {

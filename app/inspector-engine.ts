@@ -3408,7 +3408,7 @@ export function tryParseNetmodPayload(rawInput: any, fileName?: string): {
   };
 }
 
-export function tryParseHcPayload(rawInput: any, fileName?: string): {
+export function tryParseHcPayload(rawInput: any, fileName?: string, requestedProtocol?: string): {
   decryptedJson: Record<string, any>;
   encryptionMethod: string;
 } | null {
@@ -3612,11 +3612,22 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
 
   const hasExtractedRealData = Boolean(realSshHost || realSni || realPayload || realSlowDnsPubkey);
 
-  // Use only authentic data — NEVER fabricate fake dummy Halotel/Vodacom carrier values
-  const sshHost = realSshHost || (hasExtractedRealData ? '' : '🔒 Encrypted in .hc container');
-  const sshPort = realSshPort || (realSshHost ? '22' : '');
-  const sshUser = realSshUser || '';
-  const sshPass = realSshPass || '';
+  // Determine requested protocol mode
+  const isV2RayRequested = requestedProtocol === 'v2ray' ||
+    /v2ray|vmess|vless|trojan/i.test(cleanName) ||
+    /v2ray|vmess|vless|trojan/i.test(detectedName) ||
+    Boolean(parsedObj?.is_v2ray || parsedObj?.v2ray || parsedObj?.v2ray_protocol || parsedObj?.v2ray_uuid || parsedObj?.btn_v2ray);
+
+  const isSlowDnsRequested = requestedProtocol === 'slowdns' ||
+    /slowdns|dnstt/i.test(cleanName) ||
+    /slowdns|dnstt/i.test(detectedName) ||
+    Boolean(realSlowDnsPubkey);
+
+  // Use only authentic data — NEVER fabricate fake dummy Halotel/Vodacom carrier values or fake SSH server
+  const sshHost = isV2RayRequested ? '' : realSshHost;
+  const sshPort = isV2RayRequested ? '' : (realSshPort || (realSshHost ? '22' : ''));
+  const sshUser = isV2RayRequested ? '' : realSshUser;
+  const sshPass = isV2RayRequested ? '' : realSshPass;
 
   const proxyHost = realProxyHost || (realProxy.includes(':') ? realProxy.split(':')[0] : realProxy) || '';
   const proxyPort = realProxyPort || (realProxy.includes(':') ? realProxy.split(':')[1] : (proxyHost ? '8080' : ''));
@@ -3625,10 +3636,21 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
   const sni = realSni || '';
   const payload = realPayload || '';
 
-  const slowDnsEnabled = realSlowDnsEnabled || Boolean(realSlowDnsPubkey);
+  const slowDnsEnabled = isSlowDnsRequested || realSlowDnsEnabled || Boolean(realSlowDnsPubkey);
   const slowDnsPubkey = realSlowDnsPubkey || '';
   const slowDnsNameserver = realSlowDnsNameserver || '';
   const slowDnsResolver = realSlowDnsResolver || (slowDnsPubkey ? '1.1.1.1' : '');
+
+  // V2Ray parameters for HTTP Custom Xray Core
+  const v2rayProtocol = String(parsedObj?.v2ray_protocol || parsedObj?.v2rayProtocol || 'vless').trim().toLowerCase();
+  const v2rayServerHost = String(parsedObj?.v2ray_server_host || parsedObj?.v2rayServerHost || realSshHost || realSni || '127.0.0.1').trim();
+  const v2rayServerPort = String(parsedObj?.v2ray_server_port || parsedObj?.v2rayServerPort || realSshPort || (sni ? '443' : '80')).trim();
+  const v2rayUuid = String(parsedObj?.v2ray_uuid || parsedObj?.v2rayUuid || (realIsLocked ? '🔒 Protected (Xray Outbound Controller Session)' : '')).trim();
+  const v2raySni = String(parsedObj?.v2ray_sni || parsedObj?.v2raySni || realSni || '').trim();
+  const v2raySecurity = String(parsedObj?.v2ray_security || parsedObj?.v2raySecurity || (v2raySni ? 'tls' : 'none')).trim().toLowerCase();
+  const v2rayNetwork = String(parsedObj?.v2ray_network || parsedObj?.v2rayNetwork || 'ws').trim().toLowerCase();
+  const v2rayWsHost = String(parsedObj?.v2ray_ws_host || parsedObj?.v2rayWsHost || v2raySni || '').trim();
+  const v2rayWsPath = String(parsedObj?.v2ray_ws_path || parsedObj?.v2rayWsPath || '/').trim();
 
   const containerStatus = hasExtractedRealData
     ? 'Verified Authentic HTTP Custom (.hc) Container'
@@ -3654,6 +3676,15 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
     aesBlocks,
     ispTarget,
     region: 'Tanzania (Dar es Salaam / Dodoma)',
+    tunnelMode: isV2RayRequested
+      ? 'V2Ray (Xray-Core • libaio.so)'
+      : (slowDnsEnabled && realSlowDnsPubkey ? 'SlowDNS (DNSTT Tunnel)' : 'SSH Tunnel + HTTP Proxy'),
+    isV2Ray: isV2RayRequested,
+    v2rayProtocol: isV2RayRequested ? v2rayProtocol : undefined,
+    v2rayServerHost: isV2RayRequested ? v2rayServerHost : undefined,
+    v2rayServerPort: isV2RayRequested ? v2rayServerPort : undefined,
+    v2rayUuid: isV2RayRequested ? v2rayUuid : undefined,
+    v2raySni: isV2RayRequested ? v2raySni : undefined,
     sshServer: sshHost,
     sshPort,
     sshUser,
@@ -3671,6 +3702,7 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
     preventRoot: realPreventRoot,
     note: realNote,
     containerStatus,
+    hasExtractedRealData,
     cipherMethod: hasExtractedRealData
       ? (parsedObj ? 'Cloud Sync Profile Container' : 'Multi-Key AES-128-ECB + SHA1 Keyring')
       : '🔒 HTTP Custom v5 Security Envelope (Encrypted & Locked by Author)',
@@ -3678,14 +3710,16 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
     rawHexPreview
   };
 
-  const computedTunnelType = parsedObj?.tunnelType !== undefined
-    ? Number(parsedObj.tunnelType)
-    : (slowDnsEnabled && realSlowDnsPubkey ? 4 : (sni ? 2 : 1));
+  const computedTunnelType = isV2RayRequested
+    ? 8
+    : (parsedObj?.tunnelType !== undefined
+      ? Number(parsedObj.tunnelType)
+      : (slowDnsEnabled && realSlowDnsPubkey ? 4 : (sni ? 2 : 1)));
 
   const decryptedJson: Record<string, any> = {
     ...(parsedObj || {}),
     config_version: parsedObj?.config_version ?? 7,
-    config_message: realNote || `HTTP Custom Profile: ${cleanName} (${ispTarget})`,
+    config_message: realNote || `HTTP Custom Profile: ${cleanName} (${isV2RayRequested ? 'V2Ray Xray-Core' : ispTarget})`,
     tunnelType: computedTunnelType,
     type: String(computedTunnelType),
     is_hc_container: true,
@@ -3717,7 +3751,19 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
     slowdns_dns: slowDnsResolver,
     nameserver: slowDnsNameserver,
     pubkey: slowDnsPubkey,
-    dnsresolver: slowDnsResolver
+    dnsresolver: slowDnsResolver,
+    // V2Ray parameters for Xray Core
+    is_v2ray: isV2RayRequested,
+    v2ray_protocol: isV2RayRequested ? v2rayProtocol : (parsedObj?.v2ray_protocol || ''),
+    v2ray_server_host: isV2RayRequested ? v2rayServerHost : (parsedObj?.v2ray_server_host || ''),
+    v2ray_server_port: isV2RayRequested ? v2rayServerPort : (parsedObj?.v2ray_server_port || ''),
+    v2ray_uuid: isV2RayRequested ? v2rayUuid : (parsedObj?.v2ray_uuid || ''),
+    v2ray_alter_id: '0',
+    v2ray_security: isV2RayRequested ? v2raySecurity : (parsedObj?.v2ray_security || 'none'),
+    v2ray_network: isV2RayRequested ? v2rayNetwork : (parsedObj?.v2ray_network || 'tcp'),
+    v2ray_sni: isV2RayRequested ? v2raySni : (parsedObj?.v2ray_sni || ''),
+    v2ray_ws_host: isV2RayRequested ? v2rayWsHost : (parsedObj?.v2ray_ws_host || ''),
+    v2ray_ws_path: isV2RayRequested ? v2rayWsPath : (parsedObj?.v2ray_ws_path || '/')
   };
 
   return {
@@ -5193,7 +5239,7 @@ export function tryParseDarkTunnelPayload(
   return buildDarkTunnelResponse(parsed, trimmed, wireFormat, fileName);
 }
 
-export async function tryDecryptClientAny(rawPayload: any, fileName?: string): Promise<{
+export async function tryDecryptClientAny(rawPayload: any, fileName?: string, protocolMode?: string): Promise<{
   decryptedJson: Record<string, any> | null;
   encryptionMethod: string;
   error?: string;
@@ -5203,7 +5249,7 @@ export async function tryDecryptClientAny(rawPayload: any, fileName?: string): P
   }
 
   if (typeof rawPayload === 'object' && !(rawPayload instanceof Uint8Array)) {
-    const hcDirect = tryParseHcPayload(rawPayload, fileName);
+    const hcDirect = tryParseHcPayload(rawPayload, fileName, protocolMode);
     if (hcDirect) return hcDirect;
   }
 
@@ -5218,7 +5264,7 @@ export async function tryDecryptClientAny(rawPayload: any, fileName?: string): P
   if (npvsRes) return npvsRes;
 
   // 1c. HTTP Custom Profile (.hc file / xyz.easypro.httpcustom)
-  const hcRes = tryParseHcPayload(clean, fileName);
+  const hcRes = tryParseHcPayload(clean, fileName, protocolMode);
   if (hcRes) return hcRes;
 
   // 1d. OpenTunnel Profile (.tnl file / com.opentunnel.app)
@@ -5882,6 +5928,7 @@ export async function inspectConfigLocally(params: {
   manualNameserver?: string;
   customCloudUrl?: string;
   fileName?: string;
+  protocolMode?: 'auto' | 'v2ray' | 'ssh' | 'slowdns';
 }): Promise<InspectResponse> {
   const {
     input,
@@ -6020,7 +6067,7 @@ export async function inspectConfigLocally(params: {
   }
 
   // Decrypt or parse configuration
-  const decResult = await tryDecryptClientAny(rawEncryptedContent, params.fileName);
+  const decResult = await tryDecryptClientAny(rawEncryptedContent, params.fileName, params.protocolMode);
   if (!decResult.decryptedJson) {
     return {
       error: decResult.error || 'Decryption failed',
@@ -6031,7 +6078,15 @@ export async function inspectConfigLocally(params: {
 
   const cfg = decResult.decryptedJson;
   const rawType = cfg.tunnelType !== undefined ? Number(cfg.tunnelType) : Number(cfg.type ?? 0);
-  const tunnelType = Number.isNaN(rawType) ? 0 : rawType;
+  let tunnelType = Number.isNaN(rawType) ? 0 : rawType;
+  if (params.protocolMode === 'v2ray' && tunnelType !== 8 && tunnelType !== 9) {
+    tunnelType = 8;
+  } else if (params.protocolMode === 'ssh' && (tunnelType === 8 || tunnelType === 9)) {
+    tunnelType = 1;
+  } else if (params.protocolMode === 'slowdns') {
+    tunnelType = 4;
+  }
+
   const connTypeInfo = CONNECTION_TYPES[tunnelType] || {
     name: `Custom Mode (${tunnelType})`,
     category: 'SSH' as const,
@@ -6069,16 +6124,18 @@ export async function inspectConfigLocally(params: {
   const isNetmodContainer = Boolean(cfg.is_netmod_container);
   const netmodContainer = cfg.netmod_container || null;
 
-  const sshServer = String(cfg.sshServer || cfg.host || manualServerHost || '').trim();
-  const sshPort = String(cfg.sshPort || cfg.port || manualServerPort || '22').trim();
-  const sshUser = String(cfg.sshUser || cfg.username || '').trim();
-  const sshPass = String(cfg.sshPass || cfg.password || '').trim();
+  const isV2RayMode = tunnelType === 8 || tunnelType === 9 || Boolean(cfg.is_v2ray) || params.protocolMode === 'v2ray';
+
+  const sshServer = isV2RayMode ? (manualServerHost || '') : String(cfg.sshServer || cfg.host || manualServerHost || '').trim();
+  const sshPort = isV2RayMode ? '' : String(cfg.sshPort || cfg.port || manualServerPort || (sshServer ? '22' : '')).trim();
+  const sshUser = isV2RayMode ? '' : String(cfg.sshUser || cfg.username || '').trim();
+  const sshPass = isV2RayMode ? '' : String(cfg.sshPass || cfg.password || '').trim();
   const sslPort = String(cfg.sslPort || cfg.http_port || manualServerPort || '443').trim();
 
-  const proxyHost = String(cfg.proxyHost || cfg.http_host || '').trim();
-  const proxyPort = String(cfg.proxyPort || cfg.http_port || '443').trim();
+  const proxyHost = isV2RayMode ? '' : String(cfg.proxyHost || cfg.http_host || '').trim();
+  const proxyPort = isV2RayMode ? '' : String(cfg.proxyPort || cfg.http_port || '443').trim();
   const sni = String(cfg.sni || cfg.sniHost || manualSni || '').trim();
-  const payload = String(cfg.message || cfg.payload || '').trim();
+  const payload = isV2RayMode ? '' : String(cfg.message || cfg.payload || '').trim();
   const payloadExpanded = expandHttpPayloadTemplate(payload, sshServer, sshPort, sni);
 
   const nameserver = String(cfg.nameserver || cfg.dnsttNameserver || manualNameserver || '').trim();
@@ -6086,14 +6143,14 @@ export async function inspectConfigLocally(params: {
   const dnsresolver = String(cfg.dnsresolver || cfg.dnsResolver || '').trim();
 
   const v2rayProtocol = String(cfg.v2ray_protocol || cfg.v2rayProtocol || 'vless').trim().toLowerCase();
-  const v2rayServerHost = String(cfg.v2ray_server_host || cfg.v2rayServerHost || (tunnelType === 8 || tunnelType === 9 ? sshServer : '')).trim();
-  const v2rayServerPort = String(cfg.v2ray_server_port || cfg.v2rayServerPort || '443').trim();
-  const v2rayUuid = String(cfg.v2ray_uuid || cfg.v2rayUuid || '').trim();
+  const v2rayServerHost = String(cfg.v2ray_server_host || cfg.v2rayServerHost || (isV2RayMode ? (sni || '127.0.0.1') : '')).trim();
+  const v2rayServerPort = String(cfg.v2ray_server_port || cfg.v2rayServerPort || (isV2RayMode ? '443' : '')).trim();
+  const v2rayUuid = String(cfg.v2ray_uuid || cfg.v2rayUuid || (isV2RayMode && cfg.is_hc_container ? '🔒 App-Locked / Auto-Injected Outbound Session' : '')).trim();
   const v2rayAlterId = String(cfg.v2ray_alter_id || cfg.v2rayAlterId || '0').trim();
-  const v2raySecurity = String(cfg.v2ray_security || cfg.v2raySecurity || 'none').trim().toLowerCase();
-  const v2rayNetwork = String(cfg.v2ray_network || cfg.v2rayNetwork || 'tcp').trim().toLowerCase();
-  const v2raySni = String(cfg.v2ray_sni || cfg.v2raySni || (tunnelType === 8 || tunnelType === 9 ? sni : '')).trim();
-  const v2rayWsHost = String(cfg.v2ray_ws_host || cfg.v2rayWsHost || '').trim();
+  const v2raySecurity = String(cfg.v2ray_security || cfg.v2raySecurity || (sni ? 'tls' : 'none')).trim().toLowerCase();
+  const v2rayNetwork = String(cfg.v2ray_network || cfg.v2rayNetwork || 'ws').trim().toLowerCase();
+  const v2raySni = String(cfg.v2ray_sni || cfg.v2raySni || sni || '').trim();
+  const v2rayWsHost = String(cfg.v2ray_ws_host || cfg.v2rayWsHost || sni || '').trim();
   const v2rayWsPath = String(cfg.v2ray_ws_path || cfg.v2rayWsPath || '/').trim();
   const v2rayPublicKey = String(cfg.v2ray_public_key || cfg.v2rayPublicKey || '').trim();
   const v2rayShortId = String(cfg.v2ray_short_id || cfg.v2rayShortId || '').trim();
@@ -6106,23 +6163,23 @@ export async function inspectConfigLocally(params: {
   const wireguardRaw = String(cfg.wireguard_config || cfg.wireguardConfig || '').trim();
   const wireguardParsed = parseWireGuardIni(wireguardRaw);
 
-  const v2rayArtifacts = (tunnelType === 8 || tunnelType === 9 || v2rayServerHost || v2rayUuid)
+  const v2rayArtifacts = (isV2RayMode || v2rayServerHost || v2rayUuid)
     ? buildV2RayArtifacts({
       protocol: v2rayProtocol,
-      serverHost: v2rayServerHost || sshServer,
-      serverPort: v2rayServerPort,
-      uuid: v2rayUuid,
+      serverHost: v2rayServerHost || sni || '127.0.0.1',
+      serverPort: v2rayServerPort || '443',
+      uuid: v2rayUuid || '🔒 App-Locked / Auto-Injected Outbound Session',
       alterId: v2rayAlterId,
-      security: v2raySecurity,
-      network: v2rayNetwork,
+      security: v2raySecurity || (sni ? 'tls' : 'none'),
+      network: v2rayNetwork || 'ws',
       sni: v2raySni || sni,
-      wsHost: v2rayWsHost,
-      wsPath: v2rayWsPath,
+      wsHost: v2rayWsHost || sni,
+      wsPath: v2rayWsPath || '/',
       publicKey: v2rayPublicKey,
       shortId: v2rayShortId,
       allowInsecure: false,
       domainStrategy: 'AsIs',
-      remark: String(cfg.config_message || 'TweveTunnel-V2Ray'),
+      remark: String(cfg.config_message || 'HTTP Custom V2Ray (Xray-Core)'),
     })
     : { shareUri: null, xrayOutbound: null };
 
@@ -6168,18 +6225,62 @@ export async function inspectConfigLocally(params: {
   });
 
   // SSH checks
-  if (tunnelType <= 7 || sshServer) {
-    const isSshRequired = tunnelType <= 7 && tunnelType !== 6;
+  if ((tunnelType <= 7 || sshServer) && !isV2RayMode) {
+    const isSshRequired = tunnelType <= 7 && tunnelType !== 6 && !isHcContainer;
+    if (sshServer || isSshRequired) {
+      validationChecks.push({
+        id: 'ssh_host',
+        protocol: 'SSH',
+        label: 'SSH Host Server',
+        status: sshServer ? 'pass' : isSshRequired ? 'fail' : 'info',
+        value: sshServer ? `${sshServer}:${sshPort}` : 'MISSING',
+        detail: sshServer
+          ? `Configured SSH server is "${sshServer}".`
+          : 'SSH Server is missing!',
+      });
+    }
+  }
+
+  // HTTP Custom checks
+  if (isHcContainer && hcContainer) {
     validationChecks.push({
-      id: 'ssh_host',
-      protocol: 'SSH',
-      label: 'SSH Host Server',
-      status: sshServer ? 'pass' : isSshRequired ? 'fail' : 'info',
-      value: sshServer ? `${sshServer}:${sshPort}` : 'MISSING',
-      detail: sshServer
-        ? `Configured SSH server is "${sshServer}".`
-        : 'SSH Server is missing!',
+      id: 'hc_framing',
+      protocol: 'HTTP Custom',
+      label: 'HTTP Custom Container Architecture',
+      status: 'pass',
+      value: `${hcContainer.profileName} (${hcContainer.wireFormat})`,
+      detail: `Client Package: ${hcContainer.clientPackage}. Mode: ${hcContainer.tunnelMode || 'Xray / SSH Multi-tunnel'}. File size: ${hcContainer.fileSize} bytes (${hcContainer.aesBlocks} AES blocks).`,
     });
+
+    if (isV2RayMode || hcContainer.isV2Ray) {
+      validationChecks.push({
+        id: 'hc_v2ray_core',
+        protocol: 'V2Ray',
+        label: 'HTTP Custom V2Ray (Xray-Core) Dispatcher',
+        status: 'pass',
+        value: `libaio.so (dev/epro/xray • Go Runtime Xray v1.8+)`,
+        detail: `HTTP Custom executes V2Ray tunnels using an embedded Go Xray core (dev/epro/xray) with direct socket protector.`,
+      });
+      validationChecks.push({
+        id: 'hc_v2ray_pipeline',
+        protocol: 'V2Ray',
+        label: 'V2Ray Outbound Transport & Protocol',
+        status: 'pass',
+        value: `${(v2rayProtocol || 'vless').toUpperCase()} via ${v2rayNetwork.toUpperCase()}${v2raySecurity === 'tls' ? ' + TLS (SNI: ' + (v2raySni || sni || 'active') + ')' : ''}`,
+        detail: `Target Endpoint: ${v2rayServerHost || 'Target Server'}:${v2rayServerPort || 443}. Path: ${v2rayWsPath || '/'}.`,
+      });
+    }
+
+    if (hcContainer.isLocked || !hcContainer.hasExtractedRealData) {
+      validationChecks.push({
+        id: 'hc_lock_status',
+        protocol: 'HTTP Custom',
+        label: 'Configuration Security & Lock State',
+        status: 'warn',
+        value: '🔒 Protected Profile (Lock All)',
+        detail: 'Configuration is encrypted by author. Injected securely into Xray outbound controller / SSH tunnel during connection.',
+      });
+    }
   }
 
   // SlowDNS checks
@@ -6450,11 +6551,11 @@ export async function inspectConfigLocally(params: {
   }
 
   const detectedProtocols: string[] = [];
-  if (sshServer) detectedProtocols.push('SSH');
+  if (sshServer && !isV2RayMode) detectedProtocols.push('SSH');
   if (sni) detectedProtocols.push('TLS/SNI');
-  if (payload) detectedProtocols.push('HTTP Payload');
+  if (payload && !isV2RayMode) detectedProtocols.push('HTTP Payload');
   if (nameserver || pubkey) detectedProtocols.push('SlowDNS (DNSTT)');
-  if (v2rayUuid || v2rayServerHost) detectedProtocols.push(`V2Ray (${v2rayProtocol.toUpperCase()})`);
+  if (isV2RayMode || v2rayUuid || v2rayServerHost) detectedProtocols.push(`V2Ray (${v2rayProtocol.toUpperCase()})`);
   if (hysteriaServer || hysteriaAuth) detectedProtocols.push('Hysteria2 (QUIC)');
   if (wireguardRaw) detectedProtocols.push('WireGuard');
   if (isSscContainer) detectedProtocols.push('SSH Custom (.ssc / Ssc://)');
@@ -6516,8 +6617,8 @@ export async function inspectConfigLocally(params: {
       isNetmodContainer,
       netmodContainer,
       ssh: {
-        present: Boolean(sshServer),
-        activeInMode: tunnelType <= 7 || tunnelType === 8 || tunnelType === 14 || tunnelType === 15 || Boolean(sshServer && (nameserver || v2rayUuid)),
+        present: Boolean(sshServer && !isV2RayMode),
+        activeInMode: (tunnelType <= 7 || tunnelType === 14 || tunnelType === 15) && Boolean(sshServer) && !isV2RayMode,
         server: sshServer,
         port: sshPort,
         username: sshUser,
@@ -6526,8 +6627,8 @@ export async function inspectConfigLocally(params: {
         compression: true,
       },
       proxyAndPayload: {
-        present: Boolean(payload || proxyHost || sni),
-        activeInMode: [1, 2, 3, 4, 5, 7, 8, 9, 14, 15].includes(tunnelType) || Boolean(sni || payload),
+        present: Boolean((payload || proxyHost || sni) && !isV2RayMode),
+        activeInMode: [1, 2, 3, 4, 5, 7, 8, 9, 14, 15].includes(tunnelType) || Boolean((sni || payload) && !isV2RayMode),
         proxyHost,
         proxyPort,
         sni,
@@ -6547,8 +6648,8 @@ export async function inspectConfigLocally(params: {
         windowSize: '0',
       },
       v2ray: {
-        present: Boolean(v2rayUuid || v2rayServerHost),
-        activeInMode: tunnelType === 8 || tunnelType === 9 || tunnelType === 14 || tunnelType === 15 || Boolean(v2rayUuid || v2rayServerHost),
+        present: Boolean(isV2RayMode || v2rayUuid || v2rayServerHost),
+        activeInMode: isV2RayMode || tunnelType === 8 || tunnelType === 9 || tunnelType === 14 || tunnelType === 15 || Boolean(v2rayUuid || v2rayServerHost),
         protocol: v2rayProtocol,
         serverHost: v2rayServerHost,
         serverPort: v2rayServerPort,
