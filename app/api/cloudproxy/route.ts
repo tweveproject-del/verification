@@ -5,6 +5,10 @@ export const dynamic = 'force-dynamic';
 
 function normalizeCloudUrl(rawUrl: string): string {
   let u = rawUrl.trim();
+  // Auto-prepend https:// if omitted for link.playsmarty.uk or eprdv.link
+  if (/^(?:link\.playsmarty\.uk|eprdv\.link)\//i.test(u)) {
+    u = 'https://' + u;
+  }
   // Google Drive file view link -> direct stream download
   const gDriveMatch = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)/i);
   if (gDriveMatch) {
@@ -43,7 +47,7 @@ async function checkWaybackArchive(url: string): Promise<string | null> {
       const snapshotUrl = wbData?.archived_snapshots?.closest?.url;
       if (snapshotUrl) return snapshotUrl;
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -227,12 +231,15 @@ export async function GET(req: NextRequest) {
   }
 
   const isPlaysmarty = /link\.playsmarty\.uk/i.test(targetUrl);
+  const isDalvikRequired = isPlaysmarty || /eprdv\.link/i.test(targetUrl);
 
   try {
     let resp = await fetch(targetUrl, {
       method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 (HTTP Custom/5.2.0)',
+        'User-Agent': isDalvikRequired
+          ? 'Dalvik/2.1.0 (Linux; U; Android 14; Pixel 7a Build/UQ1A.240105.004)'
+          : 'Mozilla/5.0 (Linux; Android 14; Pixel 7a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 (HTTP Custom/5.2.0)',
         Accept: isPlaysmarty
           ? '*/*'
           : 'application/json, text/plain, application/octet-stream, */*',
@@ -257,7 +264,7 @@ export async function GET(req: NextRequest) {
             resp = snapResp;
             waybackRecovered = true;
           }
-        } catch {}
+        } catch { }
       }
     }
 
@@ -358,19 +365,27 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Check if buffer is valid text / json or base64 binary
-    let isUtf8Text = true;
-    for (let i = 0; i < Math.min(buf.length, 512); i++) {
-      if (buf[i] === 0) {
-        isUtf8Text = false;
-        break;
+    // Robust binary / UTF-8 text detection
+    let isUtf8Text = false;
+    let decodedText = '';
+    try {
+      const decoder = new TextDecoder('utf-8', { fatal: true });
+      decodedText = decoder.decode(buf).trim();
+      let controlCount = 0;
+      for (let i = 0; i < Math.min(decodedText.length, 256); i++) {
+        const code = decodedText.charCodeAt(i);
+        if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
+          controlCount++;
+        }
       }
+      isUtf8Text = controlCount === 0;
+    } catch {
+      isUtf8Text = false;
     }
 
-    if (isUtf8Text) {
-      const text = buf.toString('utf8').trim();
+    if (isUtf8Text && decodedText.length > 0) {
       try {
-        const json = JSON.parse(text);
+        const json = JSON.parse(decodedText);
         return NextResponse.json(
           {
             config: json.config || json.data || json,
@@ -388,7 +403,7 @@ export async function GET(req: NextRequest) {
       } catch {
         return NextResponse.json(
           {
-            config: text,
+            config: decodedText,
             format: isPlaysmarty ? 'http_custom' : 'text',
             provider: isPlaysmarty ? 'HTTP Custom Coldplay Shortlinks (link.playsmarty.uk)' : 'Remote Config URL',
             fileName: fileName || (isPlaysmarty ? 'config.hc' : undefined),

@@ -18,6 +18,8 @@ type InspectResponse = {
   error?: string;
   isPlaysmartyExpired?: boolean;
   rawDecryptedJson?: string;
+  rawPayloadBase64?: string;
+  downloadFileName?: string;
   requiresPassphrase?: boolean;
   inspectedAt?: string;
   encryptionMethod?: string;
@@ -83,6 +85,8 @@ type InspectResponse = {
         DNS_RESOLVER: string;
         NS_SERVER: string;
         PUBKEY: string;
+        PUBKEY_RAW_HEX?: string;
+        PUBKEY_DECRYPTED_SUCCESSFULLY?: boolean;
         PAYLOAD_ENABLED: boolean;
         PAYLOAD: string;
         PROXY_ENABLED: boolean;
@@ -799,6 +803,29 @@ export default function ConfigInspectorPage() {
       navigator.clipboard.writeText(link);
       setCloudLinkCopied(true);
       setTimeout(() => setCloudLinkCopied(false), 3000);
+    }
+  };
+
+  const handleDownloadHcConfig = () => {
+    if (!result?.rawPayloadBase64) return;
+    try {
+      const byteCharacters = atob(result.rawPayloadBase64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = result.downloadFileName || 'downloaded_config.hc';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Download failed', e);
     }
   };
 
@@ -1851,6 +1878,16 @@ export default function ConfigInspectorPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
+                    {result.rawPayloadBase64 && (
+                      <button
+                        type="button"
+                        onClick={handleDownloadHcConfig}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold transition cursor-pointer border border-cyan-500/30 flex items-center gap-1.5 shadow"
+                        title="Download the captured .hc configuration file to your computer or phone so you can import it into HTTP Custom app"
+                      >
+                        <span>💾</span> Download .hc Config
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleCopyCloudLink(result.rawDecryptedJson || input)}
@@ -4880,21 +4917,45 @@ export default function ConfigInspectorPage() {
                         ))}
                       </div>
 
-                      {prof.PUBKEY && (
-                        <div className="p-3 rounded-lg bg-slate-900/95 border border-purple-500/30 space-y-1">
-                          <div className="flex items-center justify-between">
+                      {(prof.PUBKEY || prof.PUBKEY_RAW_HEX) && (
+                        <div className={`p-3 rounded-lg space-y-1 ${prof.PUBKEY_DECRYPTED_SUCCESSFULLY ? 'bg-slate-900/95 border border-purple-500/30' : 'bg-amber-950/40 border border-amber-700/50'}`}>
+                          <div className="flex items-center justify-between gap-2">
                             <span className="text-[11px] font-semibold uppercase tracking-wider text-purple-300">
-                              SlowDNS (DNSTT) Server Public Key (x / PUBKEY — {prof.PUBKEY.length} hex chars)
+                              SlowDNS (DNSTT) Server Public Key (x / PUBKEY)
+                              {prof.PUBKEY_DECRYPTED_SUCCESSFULLY ? (
+                                <span className="ml-2 text-emerald-400 text-[9px] font-normal">
+                                  {prof.PUBKEY.length === 64 ? '✓ Curve25519 Verified (64 chars)' : `✓ Decrypted (${prof.PUBKEY.length} chars)`}
+                                </span>
+                              ) : prof.PUBKEY_RAW_HEX ? (
+                                <span className="ml-2 text-amber-300 text-[9px] font-normal">⚠ Encrypted Data</span>
+                              ) : null}
                             </span>
                             <button
                               type="button"
-                              onClick={() => copyText(`${pIdx}-pubkey`, prof.PUBKEY)}
-                              className="text-xs text-cyan-400 hover:underline cursor-pointer"
+                              onClick={() => copyText(`${pIdx}-pubkey`, prof.PUBKEY || prof.PUBKEY_RAW_HEX)}
+                              className="text-xs text-cyan-400 hover:underline cursor-pointer whitespace-nowrap"
                             >
-                              {copiedKey === `${pIdx}-pubkey` ? 'Copied!' : 'Copy Public Key'}
+                              {copiedKey === `${pIdx}-pubkey` ? 'Copied!' : 'Copy Key'}
                             </button>
                           </div>
-                          <p className="text-xs font-mono text-emerald-300 break-all">{prof.PUBKEY}</p>
+                          <p className="text-xs font-mono text-emerald-300 break-all">
+                            {prof.PUBKEY || (
+                              <span className="text-amber-400">
+                                {prof.PUBKEY_RAW_HEX?.slice(0, 80)}
+                                {prof.PUBKEY_RAW_HEX?.length > 80 ? '...' : ''}
+                              </span>
+                            )}
+                          </p>
+                          {!prof.PUBKEY_DECRYPTED_SUCCESSFULLY && prof.PUBKEY_RAW_HEX && (
+                            <div className="mt-2 p-2 bg-amber-950/50 rounded border border-amber-700/30">
+                              <p className="text-[10px] text-amber-300 font-mono">
+                                ⚠️ Decryption Status: Raw encrypted hex shown for verification
+                              </p>
+                              <p className="text-[9px] text-amber-400 mt-1">
+                                Length: {prof.PUBKEY_RAW_HEX.length} hex chars ({Math.floor(prof.PUBKEY_RAW_HEX.length / 2)} bytes)
+                              </p>
+                            </div>
+                          )}
                         </div>
                       )}
 

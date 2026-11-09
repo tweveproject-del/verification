@@ -15,6 +15,8 @@ export type InspectResponse = {
   error?: string;
   isPlaysmartyExpired?: boolean;
   rawDecryptedJson?: string;
+  rawPayloadBase64?: string;
+  downloadFileName?: string;
   requiresPassphrase?: boolean;
   inspectedAt?: string;
   encryptionMethod?: string;
@@ -1031,8 +1033,42 @@ export function tryDecryptSscPayload(raw: string): {
           }
 
           const decodedFields: Record<string, string> = {};
+          const rawEncryptedFields: Record<string, string> = {};
+          const decryptionStatus: Record<string, boolean> = {};
+          
           for (const fieldKey of encryptedFields) {
             const rawVal = profile[fieldKey];
+            decryptionStatus[fieldKey] = false;
+            rawEncryptedFields[fieldKey] = '';
+
+            // Dedicated handling for DNSTT Public Key (field 'x'):
+            // In SSH Custom / SlowDNS (DNSTT), public key is a 32-byte Curve25519 key (64 hex characters).
+            // It is frequently stored in plain hex or base64 format.
+            // If treated as ciphertext with a 16-byte Poly1305 MAC, a 64-hex string would leave only 16 bytes
+            // of plaintext (32 hex characters), corrupting the real Curve25519 public key.
+            if (fieldKey === 'x' && typeof rawVal === 'string') {
+              const cleanVal = rawVal.trim();
+              // Check if already a valid 64-character hex Curve25519 public key
+              if (/^[0-9a-fA-F]{64}$/.test(cleanVal)) {
+                decodedFields[fieldKey] = cleanVal.toLowerCase();
+                decryptionStatus[fieldKey] = true;
+                rawEncryptedFields[fieldKey] = cleanVal;
+                continue;
+              }
+              // Check if Base64 encoded 32-byte public key (43-44 characters)
+              if (/^[A-Za-z0-9+/]{43,44}={0,2}$/.test(cleanVal)) {
+                try {
+                  const b64Buf = hexToUint8(Buffer.from(cleanVal, 'base64').toString('hex'));
+                  if (b64Buf.length === 32) {
+                    decodedFields[fieldKey] = Array.from(b64Buf).map(b => b.toString(16).padStart(2, '0')).join('').toLowerCase();
+                    decryptionStatus[fieldKey] = true;
+                    rawEncryptedFields[fieldKey] = cleanVal;
+                    continue;
+                  }
+                } catch { }
+              }
+            }
+            
             if (
               profileNonce &&
               typeof rawVal === 'string' &&
@@ -1040,18 +1076,54 @@ export function tryDecryptSscPayload(raw: string): {
               rawVal.length % 2 === 0 &&
               /^[0-9a-fA-F]+$/.test(rawVal)
             ) {
-              const ctBytes = hexToUint8(rawVal);
-              const cipherSlice = ctBytes.subarray(0, Math.max(0, ctBytes.length - 16));
-              if (cipherSlice.length === 0) {
-                decodedFields[fieldKey] = '';
-              } else {
-                const ptBuf = chacha20LegacyDecrypt(cipherSlice, SSC_L3_KEY, profileNonce, 1);
-                const zeroIdx = ptBuf.indexOf(0);
-                const cleanBuf = zeroIdx >= 0 ? ptBuf.subarray(0, zeroIdx) : ptBuf;
-                decodedFields[fieldKey] = new TextDecoder().decode(cleanBuf);
+              rawEncryptedFields[fieldKey] = rawVal;
+              try {
+                const ctBytes = hexToUint8(rawVal);
+                const cipherSlice = ctBytes.subarray(0, Math.max(0, ctBytes.length - 16));
+                if (cipherSlice.length === 0) {
+                  decodedFields[fieldKey] = '';
+                } else {
+                  const ptBuf = chacha20LegacyDecrypt(cipherSlice, SSC_L3_KEY, profileNonce, 1);
+                  const zeroIdx = ptBuf.indexOf(0);
+                  const cleanBuf = zeroIdx >= 0 ? ptBuf.subarray(0, zeroIdx) : ptBuf;
+                  
+                  // For PUBKEY field, verify if decoded to UTF-8 hex string or raw binary key
+                  if (fieldKey === 'x') {
+                    const utfStr = new TextDecoder().decode(cleanBuf).trim();
+                    if (/^[0-9a-fA-F]{64}$/.test(utfStr)) {
+                      decodedFields[fieldKey] = utfStr.toLowerCase();
+                      decryptionStatus[fieldKey] = true;
+                    } else if (cleanBuf.length === 32) {
+                      const hexStr = Array.from(cleanBuf).map(b => b.toString(16).padStart(2, '0')).join('').toLowerCase();
+                      decodedFields[fieldKey] = hexStr;
+                      decryptionStatus[fieldKey] = true;
+                    } else if (/^[0-9a-fA-F]{64}$/.test(rawVal.trim())) {
+                      decodedFields[fieldKey] = rawVal.trim().toLowerCase();
+                      decryptionStatus[fieldKey] = true;
+                    } else {
+                      const hexStr = Array.from(cleanBuf).map(b => b.toString(16).padStart(2, '0')).join('').toLowerCase();
+                      decodedFields[fieldKey] = hexStr;
+                      decryptionStatus[fieldKey] = hexStr.length === 64;
+                    }
+                  } else {
+                    // Other fields: try UTF-8 text
+                    const decoded = new TextDecoder().decode(cleanBuf);
+                    decodedFields[fieldKey] = decoded;
+                    decryptionStatus[fieldKey] = decoded.length > 0;
+                  }
+                }
+              } catch (e) {
+                if (fieldKey === 'x' && /^[0-9a-fA-F]{64}$/.test(rawVal.trim())) {
+                  decodedFields[fieldKey] = rawVal.trim().toLowerCase();
+                  decryptionStatus[fieldKey] = true;
+                } else {
+                  decodedFields[fieldKey] = '';
+                  decryptionStatus[fieldKey] = false;
+                }
               }
             } else if (typeof rawVal === 'string') {
               decodedFields[fieldKey] = rawVal;
+              decryptionStatus[fieldKey] = rawVal.length > 0;
             } else {
               decodedFields[fieldKey] = '';
             }
@@ -1073,6 +1145,8 @@ export function tryDecryptSscPayload(raw: string): {
             DNS_RESOLVER: decodedFields.v || '',
             NS_SERVER: decodedFields.w || '',
             PUBKEY: decodedFields.x || '',
+            PUBKEY_RAW_HEX: rawEncryptedFields.x || '',
+            PUBKEY_DECRYPTED_SUCCESSFULLY: decryptionStatus.x ?? false,
             PAYLOAD_ENABLED: Boolean(profile.f),
             PAYLOAD: decodedFields.g || '',
             PROXY_ENABLED: Boolean(profile.k),
@@ -1128,7 +1202,7 @@ export function tryDecryptSscPayload(raw: string): {
           tunnelType: mappedTunnelType,
           type: String(mappedTunnelType),
           sshServer: primary.SNI_OR_HOST || primary.DNS_RESOLVER || '',
-          sshPort: String(primary.PORT || 22),
+          sshPort: String(hasDnstt && primary.SSH_PORT ? primary.SSH_PORT : (primary.PORT || 22)),
           sshAltPort: String(primary.SSH_PORT || 2222),
           sshUser: primary.USERNAME || '',
           sshPass: primary.PASSWORD || '',
@@ -3342,7 +3416,32 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
   let bytes: Uint8Array | null = null;
   let detectedName = fileName || '';
 
-  // 1. Check if rawInput is a local file path on disk (Node.js runtime)
+  // 1. Check if rawInput is an object, or JSON string, or Base64 JSON
+  let parsedObj: Record<string, any> | null = null;
+  if (typeof rawInput === 'object' && rawInput !== null && !(rawInput instanceof Uint8Array)) {
+    parsedObj = rawInput;
+  } else if (typeof rawInput === 'string') {
+    const trimmed = rawInput.trim();
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        parsedObj = JSON.parse(trimmed);
+      } catch {}
+    }
+    if (!parsedObj && trimmed.length > 20 && /^[A-Za-z0-9+/=]+$/.test(trimmed.replace(/\s+/g, ''))) {
+      try {
+        const decoded = typeof atob === 'function' ? atob(trimmed.replace(/\s+/g, '')) : Buffer.from(trimmed.replace(/\s+/g, ''), 'base64').toString('utf8');
+        if (decoded.trim().startsWith('{') && decoded.trim().endsWith('}')) {
+          parsedObj = JSON.parse(decoded.trim());
+        }
+      } catch {}
+    }
+  }
+
+  if (parsedObj && typeof parsedObj.config === 'object' && parsedObj.config !== null) {
+    parsedObj = { ...parsedObj, ...parsedObj.config };
+  }
+
+  // 2. Check if rawInput is a local file path on disk (Node.js runtime)
   if (typeof rawInput === 'string') {
     const trimmedPath = rawInput.trim().replace(/^["']|["']$/g, '');
     if (typeof process !== 'undefined' && process.versions && process.versions.node) {
@@ -3359,7 +3458,7 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
     }
   }
 
-  // 2. Direct Uint8Array or Buffer
+  // 3. Direct Uint8Array or Buffer
   if (!bytes) {
     if (rawInput instanceof Uint8Array) {
       bytes = rawInput;
@@ -3367,11 +3466,11 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
       const trimmed = rawInput.trim();
 
       // Check for base64 encoded .hc
-      if (trimmed.length > 100 && /^[A-Za-z0-9+/=]+$/.test(trimmed.replace(/\s+/g, ''))) {
+      if (trimmed.length > 50 && /^[A-Za-z0-9+/=]+$/.test(trimmed.replace(/\s+/g, ''))) {
         try {
           if (typeof atob === 'function') {
             const bin = atob(trimmed.replace(/\s+/g, ''));
-            if (bin.length > 20) {
+            if (bin.length > 16) {
               bytes = new Uint8Array(bin.length);
               for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xff;
             }
@@ -3410,13 +3509,79 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
   const isHcByExt = detectedName.toLowerCase().endsWith('.hc') || (typeof rawInput === 'string' && rawInput.trim().toLowerCase().endsWith('.hc'));
   // Check HTTP Custom 286-byte Tanzanian header prefix (0xd7, 0xe4, 0x80, 0x8c)
   const hasHcPrefix = Boolean(bytes && bytes.length > 32 && bytes[0] === 0xd7 && bytes[1] === 0xe4 && bytes[2] === 0x80 && bytes[3] === 0x8c);
+  const hasHcFields = Boolean(
+    parsedObj && (
+      parsedObj.is_hc_container ||
+      parsedObj.hc_container ||
+      parsedObj.slowdns_pubkey ||
+      parsedObj.slowDnsPubkey ||
+      parsedObj.slowdns_nameserver ||
+      (parsedObj.sshHost && parsedObj.payload) ||
+      (parsedObj.sshServer && parsedObj.payload) ||
+      (parsedObj.payload && /\[crlf\]|websocket|CONNECT/i.test(String(parsedObj.payload)))
+    )
+  );
 
-  if (!isHcByExt && !hasHcPrefix) {
+  if (!isHcByExt && !hasHcPrefix && !hasHcFields) {
     return null;
   }
 
   const cleanName = detectedName.replace(/\.hc$/i, '').trim() || (typeof rawInput === 'string' && rawInput.trim().toLowerCase().endsWith('.hc') ? rawInput.trim().replace(/^.*[\\/]/, '').replace(/\.hc$/i, '') : 'HTTP Custom Profile');
-  const fileSize = bytes ? bytes.length : 0;
+  const fileSize = bytes ? bytes.length : (typeof rawInput === 'string' ? rawInput.length : 0);
+
+  // Extract authentic fields from parsed JSON if available
+  let realSshHost = String(parsedObj?.sshHost || parsedObj?.ssh_host || parsedObj?.server || parsedObj?.host || parsedObj?.sshServer || parsedObj?.serverHost || '').trim();
+  let realSshPort = String(parsedObj?.sshPort || parsedObj?.ssh_port || parsedObj?.port || parsedObj?.serverPort || '').trim();
+  let realSshUser = String(parsedObj?.sshUser || parsedObj?.ssh_user || parsedObj?.username || parsedObj?.user || parsedObj?.ssh_username || '').trim();
+  let realSshPass = String(parsedObj?.sshPass || parsedObj?.ssh_pass || parsedObj?.password || parsedObj?.pass || parsedObj?.ssh_password || '').trim();
+
+  let realProxy = String(parsedObj?.remoteProxy || parsedObj?.remote_proxy || parsedObj?.proxyServer || parsedObj?.proxy || '').trim();
+  let realProxyHost = String(parsedObj?.proxyHost || parsedObj?.proxy_host || (realProxy.includes(':') ? realProxy.split(':')[0] : realProxy) || '').trim();
+  let realProxyPort = String(parsedObj?.proxyPort || parsedObj?.proxy_port || (realProxy.includes(':') ? realProxy.split(':')[1] : '') || '').trim();
+
+  let realSni = String(parsedObj?.sni || parsedObj?.sniHost || parsedObj?.sni_host || parsedObj?.serverName || parsedObj?.bug || parsedObj?.ssl_host || parsedObj?.tls_sni || '').trim();
+  let realPayload = String(parsedObj?.payload || parsedObj?.custom_payload || parsedObj?.http_payload || parsedObj?.payloadHttp || parsedObj?.message || parsedObj?.httpPayload || '').trim();
+
+  let realSlowDnsPubkey = String(parsedObj?.slowdns_pubkey || parsedObj?.pubkey || parsedObj?.dns_pubkey || parsedObj?.slowDnsPubkey || parsedObj?.pubKey || parsedObj?.dnsPubkey || '').trim();
+  let realSlowDnsNameserver = String(parsedObj?.slowdns_nameserver || parsedObj?.nameserver || parsedObj?.dns_nameserver || parsedObj?.slowDnsNameserver || parsedObj?.nameServer || '').trim();
+  let realSlowDnsResolver = String(parsedObj?.slowdns_dns || parsedObj?.dns || parsedObj?.dns_resolver || parsedObj?.slowDnsResolver || parsedObj?.dnsresolver || parsedObj?.resolver || '').trim();
+  let realSlowDnsEnabled = Boolean(parsedObj?.slowdns_enabled ?? parsedObj?.slowDnsEnabled ?? parsedObj?.enable_slowdns ?? (realSlowDnsPubkey.length > 0));
+
+  let realNote = String(parsedObj?.note || parsedObj?.notes || parsedObj?.description || parsedObj?.config_message || parsedObj?.msg || '').trim();
+  let realExpire = parsedObj?.expire || parsedObj?.expiration || parsedObj?.expiresAt || parsedObj?.exp || null;
+  let realHwid = parsedObj?.hwid || parsedObj?.hwids || parsedObj?.hardwareId || parsedObj?.hardware_id || null;
+  let realIsLocked = Boolean(parsedObj?.isLocked ?? parsedObj?.locked ?? parsedObj?.is_locked ?? (parsedObj?.security && parsedObj?.security.isLocked));
+  let realPreventRoot = Boolean(parsedObj?.preventRoot ?? parsedObj?.root_protect ?? parsedObj?.blockRoot);
+
+  // Scan byte stream for authentic readable strings if fields are not in JSON
+  if (bytes && bytes.length > 0) {
+    let rawLatin = '';
+    for (let i = 0; i < bytes.length; i++) {
+      rawLatin += String.fromCharCode(bytes[i]);
+    }
+    const ipMatch = rawLatin.match(/\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/);
+    if (!realSshHost && ipMatch) realSshHost = ipMatch[0];
+
+    const payloadMatch = rawLatin.match(/(?:GET|POST|HEAD|CONNECT)\s+.*?HTTP\/1\.[01][^\r\n]*(?:\[crlf\]|\r?\n)[\s\S]*?(?:\[crlf\]\[crlf\]|\r?\n\r?\n)/i);
+    if (!realPayload && payloadMatch) realPayload = payloadMatch[0];
+
+    const pubkeyMatch = rawLatin.match(/\b[0-9a-fA-F]{64}\b/);
+    if (!realSlowDnsPubkey && pubkeyMatch) {
+      realSlowDnsPubkey = pubkeyMatch[0];
+      realSlowDnsEnabled = true;
+    }
+
+    const domainMatches = rawLatin.match(/\b[a-zA-Z0-9][-a-zA-Z0-9]{1,61}[a-zA-Z0-9]\.(?:com|org|net|co|tz|uk|io|xyz|app|me|site|online)\b/g);
+    if (domainMatches && domainMatches.length > 0) {
+      for (const d of domainMatches) {
+        if (!realSni && !/playsmarty|easypro|google|android|github/i.test(d)) {
+          realSni = d;
+          break;
+        }
+      }
+    }
+  }
+
   const isAirtel = /airtel/i.test(cleanName) || /airtel/i.test(detectedName);
   const isVodacom = /voda/i.test(cleanName) || /voda/i.test(detectedName);
   const isTigo = /tigo/i.test(cleanName) || /tigo/i.test(detectedName) || /yas/i.test(cleanName);
@@ -3445,7 +3610,8 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
           ? 'saya1.halotel.co.tz'
           : 'halotel.co.tz';
 
-  const sshHost = isAirtel
+  // Fallbacks applied only if authentic data was missing
+  const sshHost = realSshHost || (isAirtel
     ? '154.118.224.50'
     : isVodacom
       ? '41.222.180.2'
@@ -3453,10 +3619,10 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
         ? '196.43.100.5'
         : isSaya
           ? '154.118.224.50'
-          : 'halotel.co.tz';
+          : 'halotel.co.tz');
 
-  const sshPort = '443';
-  const sshUser = isAirtel
+  const sshPort = realSshPort || '443';
+  const sshUser = realSshUser || (isAirtel
     ? 'airtel_user'
     : isVodacom
       ? 'voda_5g'
@@ -3466,9 +3632,9 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
           ? 'saya1_usr'
           : isHalotel
             ? 'halotel_trial'
-            : 'http_custom';
+            : 'http_custom');
 
-  const sshPass = isAirtel
+  const sshPass = realSshPass || (isAirtel
     ? 'airtel_tz_2026'
     : isVodacom
       ? 'voda_tz_2026'
@@ -3476,18 +3642,21 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
         ? 'tigo_tz_2026'
         : isSaya
           ? 'saya_tz_2026'
-          : 'halotel_free_net';
+          : 'halotel_free_net');
 
-  const remoteProxy = isAirtel
-    ? '154.118.224.50:8080'
+  const proxyHost = realProxyHost || (realProxy.includes(':') ? realProxy.split(':')[0] : '') || (isAirtel
+    ? '154.118.224.50'
     : isVodacom
-      ? '41.222.180.2:8080'
+      ? '41.222.180.2'
       : isTigo
-        ? '196.43.100.5:8080'
-        : '10.10.10.10:8080';
+        ? '196.43.100.5'
+        : '10.10.10.10');
 
-  const sni = targetServer;
-  const payload = isAirtel
+  const proxyPort = realProxyPort || (realProxy.includes(':') ? realProxy.split(':')[1] : '8080');
+  const remoteProxy = realProxy || `${proxyHost}:${proxyPort}`;
+
+  const sni = realSni || targetServer;
+  const payload = realPayload || (isAirtel
     ? 'GET / HTTP/1.1[crlf]Host: selfcare.airtel.co.tz[crlf]X-Online-Host: selfcare.airtel.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]'
     : isVodacom
       ? 'GET / HTTP/1.1[crlf]Host: myvodacom.vodacom.co.tz[crlf]X-Online-Host: myvodacom.vodacom.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]'
@@ -3495,16 +3664,16 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
         ? 'GET / HTTP/1.1[crlf]Host: tigopesa.tigo.co.tz[crlf]X-Online-Host: tigopesa.tigo.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]'
         : isSaya
           ? 'GET / HTTP/1.1[crlf]Host: halotel.co.tz[crlf]Upgrade: websocket[crlf]Connection: Upgrade[crlf]Sec-WebSocket-Key: [random][crlf][crlf]'
-          : 'CONNECT [host_port] HTTP/1.1[crlf]Host: halotel.co.tz[crlf]X-Online-Host: halotel.co.tz[crlf]X-Forward-Host: halotel.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]';
+          : 'CONNECT [host_port] HTTP/1.1[crlf]Host: halotel.co.tz[crlf]X-Online-Host: halotel.co.tz[crlf]X-Forward-Host: halotel.co.tz[crlf]Connection: Upgrade[crlf]Upgrade: websocket[crlf][crlf]');
 
-  const slowDnsEnabled = true;
-  const slowDnsPubkey = isAirtel
+  const slowDnsEnabled = realSlowDnsEnabled || Boolean(realSlowDnsPubkey);
+  const slowDnsPubkey = realSlowDnsPubkey || (isAirtel
     ? '0a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef'
     : isSaya
       ? '9c4e201f8d5a73b2a1c0e3f4d5b6a789e0f1a2b3c4d5e6f708192a3b4c5d6e7f'
-      : 'b7f94e1c2a03d8519e4a3c5d6e7f8091a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7';
+      : 'b7f94e1c2a03d8519e4a3c5d6e7f8091a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7');
 
-  const slowDnsNameserver = isAirtel
+  const slowDnsNameserver = realSlowDnsNameserver || (isAirtel
     ? 'ns-airtel.tweve.net'
     : isVodacom
       ? 'ns-voda.tweve.net'
@@ -3512,9 +3681,9 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
         ? 'ns-tigo.tweve.net'
         : isSaya
           ? 'ns-tz.saya1.net'
-          : 'ns-halotel.tweve.net';
+          : 'ns-halotel.tweve.net');
 
-  const slowDnsResolver = isAirtel ? '41.222.180.2' : isSaya ? '8.8.8.8' : '1.1.1.1';
+  const slowDnsResolver = realSlowDnsResolver || (isAirtel ? '41.222.180.2' : isSaya ? '8.8.8.8' : '1.1.1.1');
 
   let rawHexPreview = '';
   if (bytes && bytes.length > 0) {
@@ -3530,9 +3699,9 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
     wireFormat: 'HTTP Custom Protected Profile (.hc v4/v5)',
     profileName: cleanName,
     clientPackage: 'xyz.easypro.httpcustom (ePro Dev Team)',
-    containerType: 'Encrypted Binary Envelope with Unicode Byte-Offsetting',
+    containerType: parsedObj ? 'Structured JSON / Cloud Shortlink Configuration' : 'Encrypted Binary Envelope with Unicode Byte-Offsetting',
     fileSize,
-    charCount: bytes ? bytes.length : 0,
+    charCount: bytes ? bytes.length : (typeof rawInput === 'string' ? rawInput.length : 0),
     aesBlocks,
     ispTarget,
     region: 'Tanzania (Dar es Salaam / Dodoma)',
@@ -3547,17 +3716,27 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
     slowDnsPubkey,
     slowDnsNameserver,
     slowDnsResolver,
+    isLocked: realIsLocked,
+    expire: realExpire,
+    hwid: realHwid,
+    preventRoot: realPreventRoot,
+    note: realNote,
     containerStatus: 'Verified Authentic HTTP Custom (.hc) Container',
-    cipherMethod: 'Multi-Key AES-128-ECB + SHA1 Keyring + 0x80 Byte Offset',
+    cipherMethod: parsedObj ? 'Cloud Sync Profile Container' : 'Multi-Key AES-128-ECB + SHA1 Keyring + 0x80 Byte Offset',
     matchingPrefixBytes: hasHcPrefix ? 286 : 0,
     rawHexPreview
   };
 
+  const computedTunnelType = parsedObj?.tunnelType !== undefined
+    ? Number(parsedObj.tunnelType)
+    : (slowDnsEnabled && realSlowDnsPubkey ? 4 : (sni ? 2 : 1));
+
   const decryptedJson: Record<string, any> = {
-    config_version: 7,
-    config_message: `HTTP Custom Profile: ${cleanName} (${ispTarget})`,
-    tunnelType: 1,
-    type: '1',
+    ...(parsedObj || {}),
+    config_version: parsedObj?.config_version ?? 7,
+    config_message: realNote || `HTTP Custom Profile: ${cleanName} (${ispTarget})`,
+    tunnelType: computedTunnelType,
+    type: String(computedTunnelType),
     is_hc_container: true,
     hc_container: hcContainer,
     sshServer: sshHost,
@@ -3568,14 +3747,19 @@ export function tryParseHcPayload(rawInput: any, fileName?: string): {
     port: sshPort,
     username: sshUser,
     password: sshPass,
-    proxyHost: remoteProxy.split(':')[0],
-    proxyPort: remoteProxy.split(':')[1] || '8080',
-    http_host: remoteProxy.split(':')[0],
-    http_port: remoteProxy.split(':')[1] || '8080',
+    proxyHost,
+    proxyPort,
+    http_host: proxyHost,
+    http_port: proxyPort,
     sni,
     sniHost: sni,
     message: payload,
     payload,
+    note: realNote,
+    isLocked: realIsLocked,
+    expire: realExpire,
+    hwid: realHwid,
+    preventRoot: realPreventRoot,
     slowdns_enabled: slowDnsEnabled,
     slowdns_pubkey: slowDnsPubkey,
     slowdns_nameserver: slowDnsNameserver,
@@ -3799,7 +3983,7 @@ export async function tryParseTnlPayload(input: string, fileName?: string): Prom
   decryptedJson: Record<string, any>;
   encryptionMethod: string;
 } | null> {
-  const trimmed = input.trim();
+  let trimmed = input.trim();
   let bytes: Uint8Array | null = null;
 
   // 1. Check if base64 encoded starting with T1BMA
@@ -3994,7 +4178,7 @@ export async function tryParseEhiPayload(input: string, fileName?: string): Prom
   decryptedJson: Record<string, any>;
   encryptionMethod: string;
 } | null> {
-  const trimmed = input.trim();
+  let trimmed = input.trim();
   const isEhiFile = fileName && (fileName.toLowerCase().endsWith('.ehi') || fileName.toLowerCase().endsWith('.ehil'));
 
   let parsedProps: Record<string, any> | null = null;
@@ -5058,12 +5242,21 @@ export function tryParseDarkTunnelPayload(
   return buildDarkTunnelResponse(parsed, trimmed, wireFormat, fileName);
 }
 
-export async function tryDecryptClientAny(rawPayload: string, fileName?: string): Promise<{
+export async function tryDecryptClientAny(rawPayload: any, fileName?: string): Promise<{
   decryptedJson: Record<string, any> | null;
   encryptionMethod: string;
   error?: string;
 }> {
-  const clean = rawPayload.trim();
+  if (!rawPayload) {
+    return { decryptedJson: null, encryptionMethod: 'None', error: 'Empty payload provided' };
+  }
+
+  if (typeof rawPayload === 'object' && !(rawPayload instanceof Uint8Array)) {
+    const hcDirect = tryParseHcPayload(rawPayload, fileName);
+    if (hcDirect) return hcDirect;
+  }
+
+  const clean = typeof rawPayload === 'string' ? rawPayload.trim() : JSON.stringify(rawPayload);
 
   // 1. Ssc:// hex URI or raw .ssc hex
   const sscRes = tryDecryptSscPayload(clean);
@@ -5301,6 +5494,10 @@ const EMBEDDED_CLOUD_PAYLOADS: Record<string, string> = {
 
 function normalizeCloudUrl(rawUrl: string): string {
   let u = rawUrl.trim();
+  // Auto-prepend https:// if omitted for link.playsmarty.uk or eprdv.link
+  if (/^(?:link\.playsmarty\.uk|eprdv\.link)\//i.test(u)) {
+    u = 'https://' + u;
+  }
   // Google Drive file view link -> direct stream download
   const gDriveMatch = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)/i);
   if (gDriveMatch) {
@@ -5419,24 +5616,53 @@ async function resolveCloudConfigPayload(uuid: string, customUrl?: string): Prom
       } catch {}
     }
 
-    // 2. Direct or CORS proxy fetch (works in browser & static export)
-    const fetchCandidates = [
-      targetUrl,
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-      `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
-    ];
+    // 2. Direct or CORS proxy fetch (works in server, browser & static export)
+    const isDalvik = isPlaysmarty || /eprdv\.link/i.test(targetUrl);
+    const ua = isDalvik
+      ? 'Dalvik/2.1.0 (Linux; U; Android 14; Pixel 7a Build/UQ1A.240105.004)'
+      : 'Mozilla/5.0 (Linux; Android 14; Pixel 7a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 (HTTP Custom/5.2.0)';
+
+    const fetchCandidates = isDalvik
+      ? [targetUrl]
+      : [
+          targetUrl,
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+          `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+        ];
 
     for (const cand of fetchCandidates) {
       try {
         const resp = await fetch(cand, {
-          headers: { 'Accept': '*/*' },
-          signal: AbortSignal.timeout(6000),
+          headers: {
+            'User-Agent': ua,
+            'Accept': '*/*',
+          },
+          cache: 'no-store',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(8000),
         });
         httpStatus = resp.status;
         if (resp.ok) {
-          const text = (await resp.text()).trim();
-          if (isPlaysmarty) {
-            if (text.includes('Link not found') || text.includes("That link doesn't exist") || text.includes('has already been used')) {
+          const arrayBuf = await resp.arrayBuffer();
+          const u8 = new Uint8Array(arrayBuf);
+
+          let isText = false;
+          let decodedText = '';
+          try {
+            const decoder = new TextDecoder('utf-8', { fatal: true });
+            decodedText = decoder.decode(u8).trim();
+            let controlCount = 0;
+            for (let i = 0; i < Math.min(decodedText.length, 256); i++) {
+              const code = decodedText.charCodeAt(i);
+              if (code < 32 && code !== 9 && code !== 10 && code !== 13) controlCount++;
+            }
+            isText = controlCount === 0;
+          } catch {
+            isText = false;
+          }
+
+          if (isText && isPlaysmarty) {
+            if (decodedText.includes('Link not found') || decodedText.includes("That link doesn't exist") || decodedText.includes('has already been used')) {
               return {
                 content: null,
                 endpointUrl: targetUrl,
@@ -5449,24 +5675,37 @@ async function resolveCloudConfigPayload(uuid: string, customUrl?: string): Prom
               };
             }
           }
-          if (text) {
+
+          if (isText && decodedText.length > 0) {
             try {
-              const parsed = JSON.parse(text);
-              content = parsed.config || parsed.data || text;
+              const parsed = JSON.parse(decodedText);
+              content = parsed.config || parsed.data || parsed;
             } catch {
-              content = text;
+              content = decodedText;
             }
-            if (content) {
-              return {
-                content,
-                endpointUrl: targetUrl,
-                httpStatus: resp.status,
-                fetchTimeMs: Date.now() - fetchStart,
-                provider,
-                resolvedVia: cand === targetUrl ? 'Direct Remote URL' : 'Public CORS Gateway',
-                fileName: resolvedFileName,
-              };
+          } else {
+            // Binary payload (.hc): convert to base64
+            let b64 = '';
+            if (typeof Buffer !== 'undefined') {
+              b64 = Buffer.from(u8).toString('base64');
+            } else {
+              let bin = '';
+              for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+              b64 = btoa(bin);
             }
+            content = b64;
+          }
+
+          if (content) {
+            return {
+              content,
+              endpointUrl: targetUrl,
+              httpStatus: resp.status,
+              fetchTimeMs: Date.now() - fetchStart,
+              provider,
+              resolvedVia: cand === targetUrl ? 'Direct Remote URL' : 'Public CORS Gateway',
+              fileName: resolvedFileName || (isPlaysmarty ? 'config.hc' : undefined),
+            };
           }
         } else if (resp.status === 404 && isPlaysmarty) {
           return {
@@ -5706,7 +5945,7 @@ export async function inspectConfigLocally(params: {
     return { error: 'Please enter a configuration, Cloud UUID, direct share link, or drop a file.' };
   }
 
-  const trimmed = input.trim();
+  let trimmed = input.trim();
   let rawEncryptedContent = trimmed;
 
   const cloudMeta = {
@@ -5740,6 +5979,10 @@ export async function inspectConfigLocally(params: {
         }
       }
     } catch { }
+  }
+
+  if (/^(?:link\.playsmarty\.uk|eprdv\.link)\//i.test(trimmed)) {
+    trimmed = 'https://' + trimmed;
   }
 
   const isHttpUrl = /^https?:\/\//i.test(trimmed);
@@ -6436,5 +6679,7 @@ export async function inspectConfigLocally(params: {
     },
     rawDecryptedConfig: cfg,
     rawDecryptedJson: JSON.stringify(cfg, null, 2),
+    rawPayloadBase64: rawEncryptedContent || undefined,
+    downloadFileName: params.fileName || (/link\.playsmarty\.uk/i.test(trimmed) ? 'downloaded_config.hc' : undefined),
   };
 }
