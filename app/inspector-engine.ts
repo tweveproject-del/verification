@@ -3712,7 +3712,7 @@ export function tryParseHcPayload(rawInput: any, fileName?: string, requestedPro
   };
 
   const computedTunnelType = isV2RayRequested
-    ? 8
+    ? (slowDnsEnabled && realSlowDnsPubkey ? 8 : 9)
     : (parsedObj?.tunnelType !== undefined
       ? Number(parsedObj.tunnelType)
       : (slowDnsEnabled && realSlowDnsPubkey ? 4 : (sni ? 2 : 1)));
@@ -4501,44 +4501,48 @@ export function buildV2RayArtifacts(v2: {
   const wsPath = v2.wsPath || '/';
   const remarkEncoded = encodeURIComponent(v2.remark || `TweveTunnel-${proto.toUpperCase()}`);
 
-  let shareUri = '';
-  if (proto === 'vmess') {
-    const vmessObj = {
-      v: '2',
-      ps: v2.remark || 'TweveTunnel-VMess',
-      add: host,
-      port: String(port),
-      id: uuid,
-      aid: v2.alterId || '0',
-      scy: 'auto',
-      net: netType,
-      type: 'none',
-      host: wsHost,
-      path: wsPath,
-      tls: sec === 'tls' ? 'tls' : '',
-      sni,
-    };
-    shareUri = `vmess://${btoa(JSON.stringify(vmessObj))}`;
-  } else {
-    const params = new URLSearchParams();
-    params.set('type', netType);
-    params.set('security', sec);
-    if (sec === 'tls' || sec === 'reality') {
-      if (sni) params.set('sni', sni);
-      if (v2.allowInsecure) params.set('allowInsecure', '1');
+  const isLockedOrDummy = uuid.includes('🔒') || !uuid.trim() || host === '127.0.0.1';
+
+  let shareUri: string | null = null;
+  if (!isLockedOrDummy) {
+    if (proto === 'vmess') {
+      const vmessObj = {
+        v: '2',
+        ps: v2.remark || 'TweveTunnel-VMess',
+        add: host,
+        port: String(port),
+        id: uuid,
+        aid: v2.alterId || '0',
+        scy: 'auto',
+        net: netType,
+        type: 'none',
+        host: wsHost,
+        path: wsPath,
+        tls: sec === 'tls' ? 'tls' : '',
+        sni,
+      };
+      shareUri = `vmess://${btoa(JSON.stringify(vmessObj))}`;
+    } else {
+      const params = new URLSearchParams();
+      params.set('type', netType);
+      params.set('security', sec);
+      if (sec === 'tls' || sec === 'reality') {
+        if (sni) params.set('sni', sni);
+        if (v2.allowInsecure) params.set('allowInsecure', '1');
+      }
+      if (sec === 'reality') {
+        if (v2.publicKey) params.set('pbk', v2.publicKey);
+        if (v2.shortId) params.set('sid', v2.shortId);
+        params.set('fp', 'chrome');
+      }
+      if (netType === 'ws') {
+        if (wsHost) params.set('host', wsHost);
+        if (wsPath) params.set('path', wsPath);
+      } else if (netType === 'grpc') {
+        if (wsPath && wsPath !== '/') params.set('serviceName', wsPath.replace(/^\//, ''));
+      }
+      shareUri = `${proto}://${encodeURIComponent(uuid)}@${host}:${port}?${params.toString()}#${remarkEncoded}`;
     }
-    if (sec === 'reality') {
-      if (v2.publicKey) params.set('pbk', v2.publicKey);
-      if (v2.shortId) params.set('sid', v2.shortId);
-      params.set('fp', 'chrome');
-    }
-    if (netType === 'ws') {
-      if (wsHost) params.set('host', wsHost);
-      if (wsPath) params.set('path', wsPath);
-    } else if (netType === 'grpc') {
-      if (wsPath && wsPath !== '/') params.set('serviceName', wsPath.replace(/^\//, ''));
-    }
-    shareUri = `${proto}://${encodeURIComponent(uuid)}@${host}:${port}?${params.toString()}#${remarkEncoded}`;
   }
 
   const xrayOutbound: Record<string, any> = {
@@ -6081,7 +6085,10 @@ export async function inspectConfigLocally(params: {
   const rawType = cfg.tunnelType !== undefined ? Number(cfg.tunnelType) : Number(cfg.type ?? 0);
   let tunnelType = Number.isNaN(rawType) ? 0 : rawType;
   if (params.protocolMode === 'v2ray' && tunnelType !== 8 && tunnelType !== 9) {
-    tunnelType = 8;
+    tunnelType = (cfg.slowDnsEnabled && cfg.slowDnsPubkey) ? 8 : 9;
+  } else if (tunnelType === 8 && !cfg.slowDnsEnabled && !cfg.slowDnsPubkey && !cfg.nameserver && !cfg.pubkey) {
+    // Mode 8 is DNSTT + V2Ray. Without SlowDNS credentials, it is pure V2Ray (Xray-Core) Mode 9.
+    tunnelType = 9;
   } else if (params.protocolMode === 'ssh' && (tunnelType === 8 || tunnelType === 9)) {
     tunnelType = 1;
   } else if (params.protocolMode === 'slowdns') {

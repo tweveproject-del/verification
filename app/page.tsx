@@ -206,6 +206,7 @@ type InspectResponse = {
       slowDnsResolver?: string;
       containerStatus: string;
       cipherMethod: string;
+      isLocked?: boolean;
       matchingPrefixBytes?: number;
       rawHexPreview?: string;
     } | null;
@@ -2006,10 +2007,16 @@ export default function ConfigInspectorPage() {
                       Remote Server &amp; Port
                     </span>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-cyan-200 font-bold text-xs truncate">
-                        {cd.ssh.server || cd.v2ray.serverHost || cd.hysteria2.server || 'Dynamic / Gateway'} : {cd.ssh.port || cd.v2ray.serverPort || cd.hysteria2.port || '443'}
-                      </span>
-                      {(cd.ssh.server || cd.v2ray.serverHost) && (
+                      {cd.hcContainer?.isLocked ? (
+                        <span className="font-mono text-amber-300 font-bold text-xs truncate flex items-center gap-1">
+                          🔒 Encrypted in Container (App Outbound)
+                        </span>
+                      ) : (
+                        <span className="font-mono text-cyan-200 font-bold text-xs truncate">
+                          {cd.ssh.server || cd.v2ray.serverHost || cd.hysteria2.server || 'Dynamic / Gateway'} : {cd.ssh.port || cd.v2ray.serverPort || cd.hysteria2.port || '443'}
+                        </span>
+                      )}
+                      {!cd.hcContainer?.isLocked && (cd.ssh.server || cd.v2ray.serverHost) && (
                         <button
                           type="button"
                           onClick={() => copyText('cloudServer', `${cd.ssh.server || cd.v2ray.serverHost}:${cd.ssh.port || cd.v2ray.serverPort}`)}
@@ -2020,7 +2027,11 @@ export default function ConfigInspectorPage() {
                       )}
                     </div>
                     <div className="text-[11px] text-slate-400">
-                      Proxy: <span className="font-mono text-slate-300">{cd.proxyAndPayload.proxyHost ? `${cd.proxyAndPayload.proxyHost}:${cd.proxyAndPayload.proxyPort}` : 'Direct Connection'}</span>
+                      {cd.hcContainer?.isLocked ? (
+                        <span>Core: <span className="font-mono text-cyan-300">libaio.so (dev/epro/xray)</span></span>
+                      ) : (
+                        <span>Proxy: <span className="font-mono text-slate-300">{cd.proxyAndPayload.proxyHost ? `${cd.proxyAndPayload.proxyHost}:${cd.proxyAndPayload.proxyPort}` : 'Direct Connection'}</span></span>
+                      )}
                     </div>
                   </div>
 
@@ -2031,7 +2042,7 @@ export default function ConfigInspectorPage() {
                     </span>
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono text-emerald-300 font-bold text-xs truncate">
-                        {cd.proxyAndPayload.sni || cd.v2ray.sni || cd.hysteria2.sni || 'None / Plain TCP'}
+                        {cd.proxyAndPayload.sni || cd.v2ray.sni || cd.hysteria2.sni || (cd.hcContainer?.isLocked ? '🔒 Protected (TLS Handshake)' : 'None / Plain TCP')}
                       </span>
                       {(cd.proxyAndPayload.sni || cd.v2ray.sni) && (
                         <button
@@ -2053,27 +2064,40 @@ export default function ConfigInspectorPage() {
                     <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">
                       Authentication Credentials
                     </span>
-                    <div className="flex items-center justify-between font-mono text-[11px]">
-                      <span className="text-slate-400">User:</span>
-                      <span className="text-cyan-300 font-bold">{cd.ssh.username || (cd.v2ray.uuid ? `UUID: ${cd.v2ray.uuid.slice(0, 8)}...` : 'Pre-configured')}</span>
-                    </div>
-                    <div className="flex items-center justify-between font-mono text-[11px]">
-                      <span className="text-slate-400">Password:</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-amber-300 font-bold">
-                          {showCloudPassword ? (cd.ssh.password || 'none') : (cd.ssh.password ? '••••••••' : 'none')}
-                        </span>
-                        {cd.ssh.password && (
-                          <button
-                            type="button"
-                            onClick={() => setShowCloudPassword(!showCloudPassword)}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
-                          >
-                            {showCloudPassword ? 'Hide' : 'Show'}
-                          </button>
-                        )}
+                    {cd.hcContainer?.isLocked ? (
+                      <div className="font-mono text-[11px] space-y-1">
+                        <div className="text-amber-300 font-bold flex items-center gap-1">
+                          🔒 Injected into Xray Core
+                        </div>
+                        <div className="text-slate-400 text-[10px]">
+                          State: <span className="text-emerald-400 font-semibold">Active Protected Profile</span>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between font-mono text-[11px]">
+                          <span className="text-slate-400">User:</span>
+                          <span className="text-cyan-300 font-bold">{cd.ssh.username || (cd.v2ray.uuid ? `UUID: ${cd.v2ray.uuid.slice(0, 8)}...` : 'Pre-configured')}</span>
+                        </div>
+                        <div className="flex items-center justify-between font-mono text-[11px]">
+                          <span className="text-slate-400">Password:</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-amber-300 font-bold">
+                              {showCloudPassword ? (cd.ssh.password || 'none') : (cd.ssh.password ? '••••••••' : 'none')}
+                            </span>
+                            {cd.ssh.password && (
+                              <button
+                                type="button"
+                                onClick={() => setShowCloudPassword(!showCloudPassword)}
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
+                              >
+                                {showCloudPassword ? 'Hide' : 'Show'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* 5. Device Lock & Hardware ID */}
@@ -5263,7 +5287,8 @@ export default function ConfigInspectorPage() {
                   </div>
 
                   {/* Generated Share URI (vless:// / vmess:// / trojan://) & Xray Outbound JSON */}
-                  {cd.v2ray.generatedShareUri && (
+                  {/* Generated Share URI or Locked Outbound Notice */}
+                  {cd.v2ray.generatedShareUri ? (
                     <div className="p-3.5 rounded-xl bg-emerald-950/25 border border-emerald-500/30 space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-semibold uppercase tracking-wider text-emerald-300">
@@ -5312,7 +5337,21 @@ export default function ConfigInspectorPage() {
                         </div>
                       )}
                     </div>
-                  )}
+                  ) : (cd.v2ray.uuid?.includes('🔒') || cd.hcContainer?.isLocked) ? (
+                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                          🔒 Outbound Share Restricted by Author Lock (Lock All)
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          App-Encrypted Profile
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                        Plaintext V2Ray URI generation is restricted because the configuration author exported this profile with <strong>Lock All</strong>. The server credentials and UUID are encrypted inside the <code>.hc</code> container and dispatched directly to the embedded Xray engine (<code>libaio.so</code>) at connection time. To share, export the original <code>.hc</code> file or share via the permanent Coldplay cloud link.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               )}
 
