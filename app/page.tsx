@@ -190,6 +190,9 @@ type InspectResponse = {
       aesBlocks: number;
       ispTarget: string;
       region: string;
+      tunnelMode?: string;
+      isV2Ray?: boolean;
+      v2rayProtocol?: string;
       sshServer: string;
       sshPort: string;
       sshUser?: string;
@@ -2641,29 +2644,97 @@ export default function ConfigInspectorPage() {
                     </div>
                   </div>
 
+                  {/* Engine Quick Switcher Banner */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Tunnel Engine:</span>
+                      {cd.hcContainer.isV2Ray ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                          ⚡ V2Ray (Xray-Core • libaio.so)
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                          🔐 SSH Tunnel Mode
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-400">Re-inspect Engine:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProtocolMode('v2ray');
+                          handleInspect(input, importedFileInfo?.name, 'v2ray');
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          cd.hcContainer.isV2Ray
+                            ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                        }`}
+                      >
+                        ⚡ Xray-Core
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProtocolMode('ssh');
+                          handleInspect(input, importedFileInfo?.name, 'ssh');
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          !cd.hcContainer.isV2Ray
+                            ? 'bg-purple-500 text-slate-950 shadow-sm'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                        }`}
+                      >
+                        🔐 SSH Mode
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Target Connection Endpoints */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                        Tunnel Outbound & Bug Host Configuration
+                        {cd.hcContainer.isV2Ray ? 'V2Ray Outbound & Server Endpoint' : 'SSH Tunnel Outbound & Bug Host Configuration'}
                       </span>
                       <span className="text-xs text-slate-400 font-mono">
-                        Port 443 / 22 • TLS Handshake + WebSocket
+                        {cd.hcContainer.isV2Ray ? 'Port 443 / 80 • Xray Outbound Core' : 'Port 443 / 22 • TLS Handshake + WebSocket'}
                       </span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
-                      <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block font-sans">SSH Host & Port</span>
-                        <span className="text-cyan-300 font-semibold">{cd.hcContainer.sshServer}:{cd.hcContainer.sshPort}</span>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block font-sans">Remote Proxy (Bug Host)</span>
-                        <span className="text-amber-300 font-semibold">{cd.hcContainer.remoteProxy}</span>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block font-sans">SNI (Server Name)</span>
-                        <span className="text-emerald-300 font-semibold">{cd.hcContainer.sni}</span>
-                      </div>
+                      {cd.hcContainer.isV2Ray ? (
+                        <>
+                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block font-sans">Core Dispatcher</span>
+                            <span className="text-cyan-300 font-semibold truncate block">libaio.so (dev/epro/xray)</span>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block font-sans">Protocol & Transport</span>
+                            <span className="text-emerald-300 font-semibold truncate block">
+                              {(cd.hcContainer.v2rayProtocol || cd.v2ray.protocol || 'VLESS').toUpperCase()} via {cd.v2ray.network?.toUpperCase() || 'WS'}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block font-sans">Target SNI / Bug Host</span>
+                            <span className="text-amber-300 font-semibold truncate block">{cd.hcContainer.sni || cd.v2ray.sni || cd.hcContainer.remoteProxy || 'Cloud Endpoint'}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block font-sans">SSH Host & Port</span>
+                            <span className="text-cyan-300 font-semibold">{cd.hcContainer.sshServer}:{cd.hcContainer.sshPort}</span>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block font-sans">Remote Proxy (Bug Host)</span>
+                            <span className="text-amber-300 font-semibold">{cd.hcContainer.remoteProxy}</span>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+                            <span className="text-[10px] text-slate-400 block font-sans">SNI (Server Name)</span>
+                            <span className="text-emerald-300 font-semibold">{cd.hcContainer.sni}</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -2682,27 +2753,42 @@ export default function ConfigInspectorPage() {
                     </pre>
                   </div>
 
-                  {/* SSH Credentials & SlowDNS */}
+                  {/* Credentials / Core Engine Session */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-300">SSH Authentication Credentials</span>
-                        <span className="text-[10px] text-slate-400">Pre-configured</span>
+                    {cd.hcContainer.isV2Ray ? (
+                      <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-300">V2Ray Dispatch Architecture</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 font-semibold">Active Engine</span>
+                        </div>
+                        <div className="font-mono text-slate-300 text-[11px] space-y-0.5">
+                          <div>Runtime: <span className="text-cyan-300">Xray-Core (libaio.so)</span></div>
+                          <div className="truncate">Outbound: <span className="text-amber-300">🔒 Controller Injected (App Sealed)</span></div>
+                        </div>
                       </div>
-                      <div className="font-mono text-slate-300 text-[11px] space-y-0.5">
-                        <div>User: <span className="text-cyan-300">{cd.hcContainer.sshUser || 'none'}</span></div>
-                        <div>Pass: <span className="text-amber-300">{cd.hcContainer.sshPass ? '••••••••' : 'none'}</span></div>
+                    ) : (
+                      <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-300">SSH Authentication Credentials</span>
+                          <span className="text-[10px] text-slate-400">Pre-configured</span>
+                        </div>
+                        <div className="font-mono text-slate-300 text-[11px] space-y-0.5">
+                          <div>User: <span className="text-cyan-300">{cd.hcContainer.sshUser || 'none'}</span></div>
+                          <div>Pass: <span className="text-amber-300">{cd.hcContainer.sshPass ? '••••••••' : 'none'}</span></div>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-slate-300">SlowDNS (DNSTT) Fallback</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-semibold">Active</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${cd.hcContainer.slowDnsEnabled ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-800 text-slate-500'}`}>
+                          {cd.hcContainer.slowDnsEnabled ? 'Active' : 'Disabled'}
+                        </span>
                       </div>
                       <div className="font-mono text-slate-300 text-[11px] truncate space-y-0.5">
-                        <div className="truncate">NS: <span className="text-cyan-300">{cd.hcContainer.slowDnsNameserver}</span></div>
-                        <div>DNS: <span className="text-slate-400">{cd.hcContainer.slowDnsResolver}</span></div>
+                        <div className="truncate">NS: <span className="text-cyan-300">{cd.hcContainer.slowDnsNameserver || 'none'}</span></div>
+                        <div>DNS: <span className="text-slate-400">{cd.hcContainer.slowDnsResolver || 'none'}</span></div>
                       </div>
                     </div>
                   </div>
@@ -5141,9 +5227,20 @@ export default function ConfigInspectorPage() {
                         </button>
                       )}
                     </div>
-                    <p className="text-xs font-mono text-emerald-300 break-all">
-                      {cd.v2ray.uuid || <span className="text-rose-400 italic">(Missing V2Ray UUID!)</span>}
-                    </p>
+                    <div className="text-xs font-mono break-all mt-1">
+                      {cd.v2ray.uuid && !cd.v2ray.uuid.includes('🔒') ? (
+                        <span className="text-emerald-300">{cd.v2ray.uuid}</span>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
+                          <span className="text-amber-300 font-bold flex items-center gap-1.5">
+                            🔒 Protected Profile (Lock All) — Injected into Xray Outbound Core (libaio.so)
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            Dispatched directly by dev/epro/xray Controller at connection time
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* V2Ray Engine Flags */}

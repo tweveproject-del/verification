@@ -3616,7 +3616,8 @@ export function tryParseHcPayload(rawInput: any, fileName?: string, requestedPro
   const isV2RayRequested = requestedProtocol === 'v2ray' ||
     /v2ray|vmess|vless|trojan/i.test(cleanName) ||
     /v2ray|vmess|vless|trojan/i.test(detectedName) ||
-    Boolean(parsedObj?.is_v2ray || parsedObj?.v2ray || parsedObj?.v2ray_protocol || parsedObj?.v2ray_uuid || parsedObj?.btn_v2ray);
+    Boolean(parsedObj?.is_v2ray || parsedObj?.v2ray || parsedObj?.v2ray_protocol || parsedObj?.v2ray_uuid || parsedObj?.btn_v2ray) ||
+    (!realSshHost && !realSlowDnsPubkey && requestedProtocol !== 'ssh');
 
   const isSlowDnsRequested = requestedProtocol === 'slowdns' ||
     /slowdns|dnstt/i.test(cleanName) ||
@@ -6126,6 +6127,11 @@ export async function inspectConfigLocally(params: {
 
   const isV2RayMode = tunnelType === 8 || tunnelType === 9 || Boolean(cfg.is_v2ray) || params.protocolMode === 'v2ray';
 
+  if (isV2RayMode && hcContainer) {
+    hcContainer.isV2Ray = true;
+    hcContainer.tunnelMode = 'V2Ray (Xray-Core • libaio.so)';
+  }
+
   const sshServer = isV2RayMode ? (manualServerHost || '') : String(cfg.sshServer || cfg.host || manualServerHost || '').trim();
   const sshPort = isV2RayMode ? '' : String(cfg.sshPort || cfg.port || manualServerPort || (sshServer ? '22' : '')).trim();
   const sshUser = isV2RayMode ? '' : String(cfg.sshUser || cfg.username || '').trim();
@@ -6145,7 +6151,7 @@ export async function inspectConfigLocally(params: {
   const v2rayProtocol = String(cfg.v2ray_protocol || cfg.v2rayProtocol || 'vless').trim().toLowerCase();
   const v2rayServerHost = String(cfg.v2ray_server_host || cfg.v2rayServerHost || (isV2RayMode ? (sni || '127.0.0.1') : '')).trim();
   const v2rayServerPort = String(cfg.v2ray_server_port || cfg.v2rayServerPort || (isV2RayMode ? '443' : '')).trim();
-  const v2rayUuid = String(cfg.v2ray_uuid || cfg.v2rayUuid || (isV2RayMode && cfg.is_hc_container ? '🔒 App-Locked / Auto-Injected Outbound Session' : '')).trim();
+  const v2rayUuid = String(cfg.v2ray_uuid || cfg.v2rayUuid || (isV2RayMode ? '🔒 Protected by App Security Cipher (Dispatched by Xray Controller)' : '')).trim();
   const v2rayAlterId = String(cfg.v2ray_alter_id || cfg.v2rayAlterId || '0').trim();
   const v2raySecurity = String(cfg.v2ray_security || cfg.v2raySecurity || (sni ? 'tls' : 'none')).trim().toLowerCase();
   const v2rayNetwork = String(cfg.v2ray_network || cfg.v2rayNetwork || 'ws').trim().toLowerCase();
@@ -6283,8 +6289,8 @@ export async function inspectConfigLocally(params: {
     }
   }
 
-  // SlowDNS checks
-  if (tunnelType === 6 || tunnelType === 8 || tunnelType === 10 || nameserver || pubkey) {
+  // SlowDNS checks (only active when SlowDNS tunnel is configured, not in pure V2Ray mode)
+  if (!isV2RayMode && (tunnelType === 6 || tunnelType === 10 || params.protocolMode === 'slowdns' || Boolean(nameserver && pubkey))) {
     const isHex64 = /^[0-9a-fA-F]{64}$/.test(pubkey.replace(/\s+/g, ''));
     validationChecks.push({
       id: 'dnstt_ns',
@@ -6305,16 +6311,19 @@ export async function inspectConfigLocally(params: {
   }
 
   // V2Ray checks
-  if (tunnelType === 8 || tunnelType === 9 || v2rayServerHost || v2rayUuid) {
+  if (tunnelType === 8 || tunnelType === 9 || v2rayServerHost || v2rayUuid || isV2RayMode) {
     const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
     const validUuid = v2rayProtocol === 'trojan' ? v2rayUuid.length >= 4 : uuidRegex.test(v2rayUuid);
+    const isLockedUuid = v2rayUuid.includes('🔒') || (isHcContainer && !hcContainer?.hasExtractedRealData);
     validationChecks.push({
       id: 'v2ray_uuid',
       protocol: 'V2Ray',
       label: `${v2rayProtocol.toUpperCase()} UUID / Password`,
-      status: validUuid ? 'pass' : v2rayUuid ? 'warn' : 'fail',
-      value: v2rayUuid || 'MISSING',
-      detail: validUuid ? 'Valid authentication credential.' : 'Invalid UUID or password.',
+      status: (validUuid || isLockedUuid) ? 'pass' : v2rayUuid ? 'warn' : 'fail',
+      value: isLockedUuid ? '🔒 App-Protected Outbound Session' : (v2rayUuid || 'MISSING'),
+      detail: isLockedUuid
+        ? 'Encrypted in profile container. Directly injected into embedded Xray-Core controller during connection.'
+        : (validUuid ? 'Valid authentication credential.' : 'Invalid UUID or password.'),
     });
   }
 
