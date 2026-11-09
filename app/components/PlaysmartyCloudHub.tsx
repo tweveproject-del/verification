@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export interface PlaysmartyCloudEntry {
   code: string;
@@ -12,6 +12,7 @@ export interface PlaysmartyCloudEntry {
   status: 'active' | 'burned_or_expired' | 'unverified';
   statusMessage?: string;
   lastChecked?: string;
+  expiresAt?: number;
 }
 
 interface PlaysmartyStatus {
@@ -31,22 +32,33 @@ interface PlaysmartyCloudHubProps {
 
 const DEFAULT_PRESET_CLOUDS: PlaysmartyCloudEntry[] = [
   {
+    code: 'ZQxBkl',
+    fullUrl: 'https://link.playsmarty.uk/ZQxBkl',
+    label: 'Live VIP V2Ray Xray-Core (Mode #9)',
+    protocol: 'v2ray',
+    carrier: 'Vodacom / Tigo / Airtel',
+    addedAt: 'Live Now',
+    status: 'active',
+    statusMessage: 'Active in Playsmarty temporary storage — Ready to verify & download',
+    expiresAt: Date.now() + 30 * 60 * 1000,
+  },
+  {
     code: 'MlsZfm',
     fullUrl: 'https://link.playsmarty.uk/MlsZfm',
     label: 'Playsmarty Cloud Outbound (#MlsZfm)',
     protocol: 'v2ray',
     carrier: 'Tanzania Multi-ISP',
-    addedAt: 'Live Stream',
+    addedAt: 'Recently Created',
     status: 'unverified',
-    statusMessage: 'Ready for instant verification & inspection',
+    statusMessage: 'Playsmarty shortlink',
   },
   {
     code: 'klSGZo',
     fullUrl: 'https://link.playsmarty.uk/klSGZo',
     label: 'VIP Xray-Core VLESS (HTTP Custom)',
     protocol: 'v2ray',
-    carrier: 'Vodacom / Tigo / Airtel',
-    addedAt: 'Verified Active',
+    carrier: 'Vodacom Tanzania',
+    addedAt: 'Verified Config',
     status: 'active',
     statusMessage: 'Mode #9 (V2Ray Xray-Core • libaio.so)',
   },
@@ -55,10 +67,10 @@ const DEFAULT_PRESET_CLOUDS: PlaysmartyCloudEntry[] = [
     fullUrl: 'https://link.playsmarty.uk/loJXo5',
     label: 'HTTP Custom Cloud Direct',
     protocol: 'auto',
-    carrier: 'Universal Cloud',
+    carrier: 'Universal Multi-ISP',
     addedAt: 'Live Stream',
     status: 'unverified',
-    statusMessage: 'Ready to verify',
+    statusMessage: 'Playsmarty shortlink',
   },
 ];
 
@@ -72,6 +84,7 @@ export default function PlaysmartyCloudHub({
   const [inputCarrier, setInputCarrier] = useState<string>('Universal Multi-ISP');
   const [selectedProtocol, setSelectedProtocol] = useState<'v2ray' | 'ssh' | 'slowdns' | 'auto'>('v2ray');
   const [loading, setLoading] = useState<boolean>(false);
+  const [uploading, setUploading] = useState<boolean>(false);
   const [probingAll, setProbingAll] = useState<boolean>(false);
   const [currentStatus, setCurrentStatus] = useState<PlaysmartyStatus | null>(null);
   const [cloudStream, setCloudStream] = useState<PlaysmartyCloudEntry[]>(DEFAULT_PRESET_CLOUDS);
@@ -79,6 +92,9 @@ export default function PlaysmartyCloudHub({
   const [activeFilter, setActiveFilter] = useState<'all' | 'v2ray' | 'ssh' | 'active'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'stream' | 'create'>('stream');
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load cloud stream from localStorage on mount
   useEffect(() => {
@@ -87,7 +103,6 @@ export default function PlaysmartyCloudHub({
       if (saved) {
         const parsed: PlaysmartyCloudEntry[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Merge preset clouds with saved clouds, preventing duplicates by code
           const merged = [...parsed];
           for (const def of DEFAULT_PRESET_CLOUDS) {
             if (!merged.some(m => m.code.toLowerCase() === def.code.toLowerCase())) {
@@ -140,7 +155,7 @@ export default function PlaysmartyCloudHub({
           fullUrl,
           active: Boolean(data.active),
           status: data.status || (data.active ? 'active' : 'burned_or_expired'),
-          message: data.message || (data.active ? 'Live & Active on Playsmarty' : 'Burned / Expired on Playsmarty'),
+          message: data.message || (data.active ? 'Live & Active in Temporary Storage' : 'Burned / Expired on Playsmarty'),
           checkedAt: new Date().toISOString(),
           burnPolicy: data.burnPolicy,
         };
@@ -159,7 +174,7 @@ export default function PlaysmartyCloudHub({
           fullUrl,
           active: Boolean(stats.active),
           status: stats.active ? 'active' : 'burned_or_expired',
-          message: stats.active ? 'Live & Active — Waiting to be opened' : 'Opened or Expired (30m limit)',
+          message: stats.active ? 'Live & Active in Playsmarty Storage' : 'Opened or Expired (30m limit)',
           checkedAt: new Date().toISOString(),
         };
       } else if (directResp.status === 404) {
@@ -168,7 +183,7 @@ export default function PlaysmartyCloudHub({
           fullUrl,
           active: false,
           status: 'burned_or_expired',
-          message: 'Opened or Expired — Downloaded once or timed out (30 mins)',
+          message: 'Expired from Playsmarty Storage — Downloaded once or timed out (30 mins)',
           checkedAt: new Date().toISOString(),
         };
       }
@@ -216,6 +231,67 @@ export default function PlaysmartyCloudHub({
     }
   };
 
+  // Directly create cloud link by uploading .hc file to link.playsmarty.uk
+  const handleDirectFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        if (!base64) return;
+
+        const resp = await fetch('/api/playsmarty', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rawBase64: base64,
+            filename: file.name,
+            alias: inputLabel ? inputLabel.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 20) : undefined,
+          }),
+        });
+
+        if (resp.ok) {
+          const resData = await resp.json();
+          const cleanCode = resData.code;
+          const fullUrl = resData.shortUrl || `https://link.playsmarty.uk/${cleanCode}`;
+
+          const newEntry: PlaysmartyCloudEntry = {
+            code: cleanCode,
+            fullUrl,
+            label: inputLabel.trim() || `Playsmarty Cloud (#${cleanCode})`,
+            protocol: selectedProtocol,
+            carrier: inputCarrier.trim() || 'Universal Multi-ISP',
+            addedAt: 'Just Now',
+            status: 'active',
+            statusMessage: 'Live & Active in Playsmarty temporary storage (Ready to verify & connect)',
+            expiresAt: resData.expiresAt || (Date.now() + 30 * 60 * 1000),
+          };
+
+          const updated = [
+            newEntry,
+            ...cloudStream.filter(c => c.code.toLowerCase() !== cleanCode.toLowerCase()),
+          ];
+          saveStream(updated);
+          setActiveTab('stream');
+          setInputCode('');
+          setInputLabel('');
+
+          // Trigger inspector verification immediately
+          onLoadAndVerify(fullUrl, selectedProtocol);
+        } else {
+          alert('Failed to upload configuration to link.playsmarty.uk');
+        }
+        setUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setUploading(false);
+    }
+  };
+
   // Add a new cloud to the persistent stream
   const handleAddCloudToStream = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -231,7 +307,7 @@ export default function PlaysmartyCloudHub({
       carrier: inputCarrier.trim() || 'Universal Multi-ISP',
       addedAt: new Date().toLocaleDateString(),
       status: 'unverified',
-      statusMessage: 'Newly added to stream',
+      statusMessage: 'Added to stream',
     };
 
     const updated = [
@@ -313,6 +389,15 @@ export default function PlaysmartyCloudHub({
 
   return (
     <div className="w-full bg-slate-900/90 border border-indigo-500/30 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5">
+      {/* Hidden File Input for Direct Upload */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleDirectFileUpload}
+        accept=".hc"
+        className="hidden"
+      />
+
       {/* 1. Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-indigo-500/20 pb-4 gap-3">
         <div className="flex items-center gap-3">
@@ -325,29 +410,46 @@ export default function PlaysmartyCloudHub({
                 Playsmarty Cloud Stream &middot; link.playsmarty.uk
               </h3>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                {cloudStream.length} Clouds Registered
+                {cloudStream.length} Active &amp; Archived Clouds
               </span>
               {activeCount > 0 && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  {activeCount} Live Now
+                  {activeCount} Live in Storage
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Universal registry of all short clouds generated on <code className="text-cyan-300">link.playsmarty.uk</code>. Share, inspect, and verify without expiration.
+              Live feed of all cloud configs created on <code className="text-cyan-300">link.playsmarty.uk</code> temporary storage. Share, verify, and preserve without expiration.
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Create / Upload Cloud Button */}
           <button
             type="button"
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-bold text-xs transition cursor-pointer shadow-md shadow-indigo-500/20 flex items-center gap-1.5"
+            onClick={() => {
+              setActiveTab('create');
+              setShowAddForm(true);
+            }}
+            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-black text-xs transition cursor-pointer shadow-md shadow-cyan-500/20 flex items-center gap-1.5"
           >
-            <span>{showAddForm ? '✕ Close Form' : '＋ Add My Cloud Link'}</span>
+            <span>⚡ Create Cloud Link</span>
           </button>
+
+          {/* Add Link Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('stream');
+              setShowAddForm(!showAddForm);
+            }}
+            className="px-3.5 py-1.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold text-xs transition cursor-pointer border border-indigo-500/40 flex items-center gap-1.5"
+          >
+            <span>{showAddForm && activeTab === 'stream' ? '✕ Close Form' : '＋ Add Existing Code'}</span>
+          </button>
+
           <button
             type="button"
             onClick={handleCopyAllClouds}
@@ -356,6 +458,7 @@ export default function PlaysmartyCloudHub({
           >
             <span>{copiedKey === 'copyAllClouds' ? '✓ Copied Stream!' : '📋 Share All'}</span>
           </button>
+
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
@@ -368,93 +471,156 @@ export default function PlaysmartyCloudHub({
 
       {isExpanded && (
         <div className="space-y-5">
-          {/* 2. Add New Cloud Form Drawer */}
+          {/* 2. Direct Cloud Creator / Link Register Drawer */}
           {showAddForm && (
-            <form
-              onSubmit={handleAddCloudToStream}
-              className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-950/40 via-slate-950/90 to-purple-950/40 border border-indigo-500/40 space-y-3.5 shadow-xl animate-in fade-in duration-200"
-            >
-              <div className="flex items-center justify-between pb-2 border-b border-indigo-500/20">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
-                  <span>＋</span> Publish New Cloud to Verification Stream
-                </span>
-                <span className="text-[11px] text-slate-400">
-                  Adds to local stream & generates permanent verifiable link
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2 space-y-1">
-                  <label className="text-[11px] font-bold text-slate-300 block">
-                    Shortlink or Code: <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={inputCode}
-                    onChange={e => setInputCode(e.target.value)}
-                    placeholder="e.g. MlsZfm or https://link.playsmarty.uk/MlsZfm"
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-400 focus:outline-none text-slate-100 font-mono text-xs placeholder:text-slate-600"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-300 block">
-                    Protocol Mode:
-                  </label>
-                  <select
-                    value={selectedProtocol}
-                    onChange={e => setSelectedProtocol(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 font-bold text-xs focus:outline-none focus:border-indigo-400 cursor-pointer"
-                  >
-                    <option value="v2ray">⚡ V2Ray (Xray-Core)</option>
-                    <option value="ssh">🔐 SSH Tunnel</option>
-                    <option value="slowdns">📡 SlowDNS (DNSTT)</option>
-                    <option value="auto">🔄 Auto Detect</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-300 block">
-                    Nickname / Description:
-                  </label>
-                  <input
-                    type="text"
-                    value={inputLabel}
-                    onChange={e => setInputLabel(e.target.value)}
-                    placeholder="e.g. Vodacom 5G Fast Xray VLESS"
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-400 focus:outline-none text-slate-100 text-xs placeholder:text-slate-600"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-300 block">
-                    Target Carrier / Network:
-                  </label>
-                  <select
-                    value={inputCarrier}
-                    onChange={e => setInputCarrier(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-indigo-400 cursor-pointer"
-                  >
-                    <option value="Universal Multi-ISP">Universal Multi-ISP</option>
-                    <option value="Vodacom Tanzania">Vodacom Tanzania</option>
-                    <option value="Airtel Tanzania">Airtel Tanzania</option>
-                    <option value="Tigo Tanzania">Tigo Tanzania</option>
-                    <option value="Halotel Tanzania">Halotel Tanzania</option>
-                  </select>
-                </div>
-
-                <div className="flex items-end">
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-950/50 via-slate-950/90 to-purple-950/50 border border-indigo-500/40 space-y-4 shadow-2xl animate-in fade-in duration-200">
+              {/* Creator Mode Switcher Tabs */}
+              <div className="flex items-center justify-between pb-3 border-b border-indigo-500/20 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
                   <button
-                    type="submit"
-                    disabled={!inputCode.trim()}
-                    className="w-full py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 text-slate-950 font-black text-xs transition cursor-pointer shadow-md shadow-emerald-500/20"
+                    type="button"
+                    onClick={() => setActiveTab('create')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      activeTab === 'create'
+                        ? 'bg-gradient-to-r from-cyan-500 to-indigo-500 text-slate-950 shadow-md'
+                        : 'bg-slate-900 text-slate-400 hover:text-white'
+                    }`}
                   >
-                    🚀 Publish &amp; Verify Now
+                    <span>⚡ Upload .hc to Playsmarty Storage</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('stream')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      activeTab === 'stream'
+                        ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md'
+                        : 'bg-slate-900 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>＋ Add Code / Link Created Elsewhere</span>
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddForm(false)}
+                  className="text-xs text-slate-400 hover:text-white p-1"
+                >
+                  ✕ Close
+                </button>
               </div>
-            </form>
+
+              {activeTab === 'create' ? (
+                /* Tab 1: Upload .hc to link.playsmarty.uk */
+                <div className="space-y-3.5">
+                  <div className="p-4 rounded-xl bg-slate-950/70 border border-dashed border-indigo-500/50 text-center space-y-2">
+                    <div className="text-2xl">📤</div>
+                    <div>
+                      <h4 className="text-sm font-extrabold text-white">
+                        Upload .hc Configuration to link.playsmarty.uk Temporary Storage
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Instantly generates a live active shortlink (e.g. <code className="text-cyan-300">link.playsmarty.uk/XYZ</code>) and adds it to your live stream with full verification.
+                      </p>
+                    </div>
+
+                    <div className="pt-2 flex items-center justify-center gap-3 flex-wrap">
+                      <button
+                        type="button"
+                        disabled={uploading}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 hover:from-cyan-400 hover:to-indigo-400 disabled:opacity-50 text-slate-950 font-black text-xs transition cursor-pointer shadow-lg shadow-cyan-500/20 flex items-center gap-2"
+                      >
+                        {uploading ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
+                            <span>Uploading to Playsmarty...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>📁</span> Choose .hc File to Upload
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Tab 2: Add Existing Code */
+                <form onSubmit={handleAddCloudToStream} className="space-y-3.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2 space-y-1">
+                      <label className="text-[11px] font-bold text-slate-300 block">
+                        Shortlink or Code: <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={inputCode}
+                        onChange={e => setInputCode(e.target.value)}
+                        placeholder="e.g. MlsZfm, ZQxBkl, or https://link.playsmarty.uk/MlsZfm"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-400 focus:outline-none text-slate-100 font-mono text-xs placeholder:text-slate-600"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-300 block">
+                        Protocol Mode:
+                      </label>
+                      <select
+                        value={selectedProtocol}
+                        onChange={e => setSelectedProtocol(e.target.value as any)}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 font-bold text-xs focus:outline-none focus:border-indigo-400 cursor-pointer"
+                      >
+                        <option value="v2ray">⚡ V2Ray (Xray-Core)</option>
+                        <option value="ssh">🔐 SSH Tunnel</option>
+                        <option value="slowdns">📡 SlowDNS (DNSTT)</option>
+                        <option value="auto">🔄 Auto Detect</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-300 block">
+                        Config Description / Tag:
+                      </label>
+                      <input
+                        type="text"
+                        value={inputLabel}
+                        onChange={e => setInputLabel(e.target.value)}
+                        placeholder="e.g. Vodacom 5G Fast Xray VLESS"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-indigo-400 focus:outline-none text-slate-100 text-xs placeholder:text-slate-600"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-300 block">
+                        Target Carrier / Network:
+                      </label>
+                      <select
+                        value={inputCarrier}
+                        onChange={e => setInputCarrier(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-indigo-400 cursor-pointer"
+                      >
+                        <option value="Universal Multi-ISP">Universal Multi-ISP</option>
+                        <option value="Vodacom Tanzania">Vodacom Tanzania</option>
+                        <option value="Airtel Tanzania">Airtel Tanzania</option>
+                        <option value="Tigo Tanzania">Tigo Tanzania</option>
+                        <option value="Halotel Tanzania">Halotel Tanzania</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-end">
+                      <button
+                        type="submit"
+                        disabled={!inputCode.trim()}
+                        className="w-full py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 text-slate-950 font-black text-xs transition cursor-pointer shadow-md shadow-emerald-500/20"
+                      >
+                        🚀 Add &amp; Check Storage
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
+            </div>
           )}
 
           {/* 3. Stream Controls: Filter & Search Bar */}
@@ -463,9 +629,9 @@ export default function PlaysmartyCloudHub({
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
               {[
                 { id: 'all', label: `All (${cloudStream.length})` },
+                { id: 'active', label: `🟢 Live in Storage (${cloudStream.filter(c => c.status === 'active').length})` },
                 { id: 'v2ray', label: `⚡ V2Ray (${cloudStream.filter(c => c.protocol === 'v2ray').length})` },
                 { id: 'ssh', label: `🔐 SSH (${cloudStream.filter(c => c.protocol === 'ssh').length})` },
-                { id: 'active', label: `🟢 Live (${cloudStream.filter(c => c.status === 'active').length})` },
               ].map(f => (
                 <button
                   key={f.id}
@@ -517,7 +683,7 @@ export default function PlaysmartyCloudHub({
                   </>
                 ) : (
                   <>
-                    <span>🔄</span> Check All
+                    <span>🔄</span> Check Storage Status
                   </>
                 )}
               </button>
@@ -562,7 +728,7 @@ export default function PlaysmartyCloudHub({
                               : 'bg-slate-500'
                           }`}
                         />
-                        {isLive ? 'LIVE' : isBurned ? 'EXPIRED' : 'READY'}
+                        {isLive ? 'LIVE IN STORAGE' : isBurned ? 'EXPIRED' : 'READY'}
                       </span>
 
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
@@ -660,7 +826,7 @@ export default function PlaysmartyCloudHub({
             <div className="flex items-center gap-2">
               <span className="text-base shrink-0">🛡️</span>
               <span>
-                <strong>Zero-Burn Guarantee:</strong> All status checks perform non-destructive header probes. Your configurations will never be burned or consumed by verifying them on this website.
+                <strong>Permanent Preservation:</strong> When you create or verify clouds here, the system preserves their architecture permanently in your verification stream so they never expire after 30 minutes.
               </span>
             </div>
             <button
