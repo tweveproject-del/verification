@@ -791,7 +791,67 @@ export default function ConfigInspectorPage() {
   const [cloudLinkCopied, setCloudLinkCopied] = useState(false);
   const [waybackProbing, setWaybackProbing] = useState(false);
   const [waybackResult, setWaybackResult] = useState<string | null>(null);
+  const [liveCloudProbe, setLiveCloudProbe] = useState<{
+    code: string;
+    active: boolean;
+    status: 'active' | 'burned_or_expired' | 'network_error';
+    message: string;
+    checkedAt: string;
+  } | null>(null);
+  const [probingLiveCloud, setProbingLiveCloud] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const probeLivePlaysmartyCode = async (codeOrUrl: string) => {
+    const trimmed = codeOrUrl.trim();
+    const match = trimmed.match(/link\.playsmarty\.uk\/([a-zA-Z0-9_-]+)/i) || trimmed.match(/^([a-zA-Z0-9_-]{4,12})$/);
+    const code = match ? match[1] : trimmed;
+    if (!code) return;
+
+    setProbingLiveCloud(true);
+    try {
+      const res = await fetch(`/api/playsmarty?code=${encodeURIComponent(code)}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setLiveCloudProbe({
+          code,
+          active: Boolean(data.active),
+          status: data.status || (data.active ? 'active' : 'burned_or_expired'),
+          message: data.message || (data.active ? 'Live & Active in Temporary Storage' : 'Burned / Expired on Playsmarty'),
+          checkedAt: new Date().toLocaleTimeString(),
+        });
+      } else {
+        const directResp = await fetch(`https://link.playsmarty.uk/api/stats/${encodeURIComponent(code)}`, { cache: 'no-store' });
+        if (directResp.ok) {
+          const stats = await directResp.json();
+          setLiveCloudProbe({
+            code,
+            active: Boolean(stats.active),
+            status: stats.active ? 'active' : 'burned_or_expired',
+            message: stats.active ? 'Live & Active in Playsmarty Storage' : 'Opened or Expired (30m limit)',
+            checkedAt: new Date().toLocaleTimeString(),
+          });
+        } else if (directResp.status === 404) {
+          setLiveCloudProbe({
+            code,
+            active: false,
+            status: 'burned_or_expired',
+            message: 'Expired from Playsmarty Storage — Downloaded once or timed out (30 mins)',
+            checkedAt: new Date().toLocaleTimeString(),
+          });
+        }
+      }
+    } catch {
+      setLiveCloudProbe({
+        code,
+        active: false,
+        status: 'network_error',
+        message: 'Could not reach link.playsmarty.uk',
+        checkedAt: new Date().toLocaleTimeString(),
+      });
+    } finally {
+      setProbingLiveCloud(false);
+    }
+  };
 
   const generatePermanentCloudLink = (content: string): string => {
     if (typeof window === 'undefined') return '';
@@ -881,6 +941,13 @@ export default function ConfigInspectorPage() {
 
     setLoading(true);
     setResult(null);
+
+    // Auto-probe real-time cloud status if input is link.playsmarty.uk shortlink
+    if (/link\.playsmarty\.uk/i.test(targetInput) || (/^[a-zA-Z0-9_-]{4,12}$/.test(targetInput.trim()) && !targetInput.includes('{'))) {
+      probeLivePlaysmartyCode(targetInput);
+    } else {
+      setLiveCloudProbe(null);
+    }
     try {
       // 1. Try server-side API inspection first if available
       try {
@@ -1935,6 +2002,90 @@ export default function ConfigInspectorPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Real-Time Playsmarty Remote Storage Status Monitor Banner */}
+              {liveCloudProbe && (
+                <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                  liveCloudProbe.active
+                    ? 'bg-gradient-to-r from-emerald-950/40 via-slate-950 to-emerald-950/30 border-emerald-500/50 shadow-xl shadow-emerald-950/20'
+                    : liveCloudProbe.status === 'burned_or_expired'
+                    ? 'bg-gradient-to-r from-rose-950/40 via-slate-950 to-rose-950/30 border-rose-500/40 shadow-xl shadow-rose-950/20'
+                    : 'bg-slate-950/90 border-cyan-500/40'
+                }`}>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg shrink-0 ${
+                        liveCloudProbe.active
+                          ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                          : liveCloudProbe.status === 'burned_or_expired'
+                          ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300'
+                          : 'bg-cyan-500/20 border border-cyan-500/40 text-cyan-300'
+                      }`}>
+                        {liveCloudProbe.active ? '🟢' : liveCloudProbe.status === 'burned_or_expired' ? '🔴' : '☁️'}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-white">
+                            https://link.playsmarty.uk/{liveCloudProbe.code}
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            liveCloudProbe.active
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : liveCloudProbe.status === 'burned_or_expired'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                              : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                          }`}>
+                            {liveCloudProbe.active
+                              ? 'LIVE IN TEMPORARY STORAGE'
+                              : liveCloudProbe.status === 'burned_or_expired'
+                              ? 'BURNED / EXPIRED ON CLOUD SERVER'
+                              : 'CHECKING STORAGE...'}
+                          </span>
+                          {liveCloudProbe.checkedAt && (
+                            <span className="text-[10px] font-mono text-slate-400">
+                              Checked {liveCloudProbe.checkedAt}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-300 mt-1">
+                          {liveCloudProbe.active ? (
+                            <span className="text-emerald-300 font-medium">
+                              ✨ <strong>Ready for direct connection:</strong> The configuration file is currently live in Playsmarty&apos;s temporary storage and can be imported directly into HTTP Custom or Tweve Tunnel.
+                            </span>
+                          ) : liveCloudProbe.status === 'burned_or_expired' ? (
+                            <span className="text-rose-300 font-medium">
+                              ⚠️ <strong>Remote Link Expired:</strong> This shortlink was downloaded once by HTTP Custom or timed out (30-minute limit). The verified parameters below are safely preserved in Tweve Inspector offline memory.
+                            </span>
+                          ) : (
+                            <span>{liveCloudProbe.message}</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={probingLiveCloud}
+                        onClick={() => probeLivePlaysmartyCode(liveCloudProbe.code)}
+                        className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-cyan-300 text-xs font-bold transition border border-cyan-500/30 flex items-center gap-1.5 cursor-pointer shadow"
+                        title="Query link.playsmarty.uk in real time to verify if link is live or burned"
+                      >
+                        {probingLiveCloud ? (
+                          <>
+                            <span className="w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                            <span>Checking...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>⚡</span> Re-Check Storage
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Real Actual Configuration of Cloud Config Showcase Card */}
               <div className="bg-gradient-to-b from-slate-900/95 via-slate-950 to-slate-900/95 border-2 border-cyan-500/50 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5">

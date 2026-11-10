@@ -32,25 +32,24 @@ interface PlaysmartyCloudHubProps {
 
 const DEFAULT_PRESET_CLOUDS: PlaysmartyCloudEntry[] = [
   {
-    code: 'ZQxBkl',
-    fullUrl: 'https://link.playsmarty.uk/ZQxBkl',
-    label: 'Live VIP V2Ray Xray-Core (Mode #9)',
-    protocol: 'v2ray',
-    carrier: 'Vodacom / Tigo / Airtel',
-    addedAt: 'Live Now',
-    status: 'active',
-    statusMessage: 'Active in Playsmarty temporary storage — Ready to verify & download',
-    expiresAt: Date.now() + 30 * 60 * 1000,
-  },
-  {
     code: 'MlsZfm',
     fullUrl: 'https://link.playsmarty.uk/MlsZfm',
     label: 'Playsmarty Cloud Outbound (#MlsZfm)',
     protocol: 'v2ray',
     carrier: 'Tanzania Multi-ISP',
-    addedAt: 'Recently Created',
+    addedAt: 'Recent Upload',
     status: 'unverified',
-    statusMessage: 'Playsmarty shortlink',
+    statusMessage: 'Checking live temporary storage...',
+  },
+  {
+    code: 'ZQxBkl',
+    fullUrl: 'https://link.playsmarty.uk/ZQxBkl',
+    label: 'Live VIP V2Ray Xray-Core (Mode #9)',
+    protocol: 'v2ray',
+    carrier: 'Vodacom / Tigo / Airtel',
+    addedAt: 'Recent Upload',
+    status: 'unverified',
+    statusMessage: 'Checking live temporary storage...',
   },
   {
     code: 'klSGZo',
@@ -58,9 +57,9 @@ const DEFAULT_PRESET_CLOUDS: PlaysmartyCloudEntry[] = [
     label: 'VIP Xray-Core VLESS (HTTP Custom)',
     protocol: 'v2ray',
     carrier: 'Vodacom Tanzania',
-    addedAt: 'Verified Config',
-    status: 'active',
-    statusMessage: 'Mode #9 (V2Ray Xray-Core • libaio.so)',
+    addedAt: 'Recent Upload',
+    status: 'unverified',
+    statusMessage: 'Checking live temporary storage...',
   },
   {
     code: 'loJXo5',
@@ -68,9 +67,9 @@ const DEFAULT_PRESET_CLOUDS: PlaysmartyCloudEntry[] = [
     label: 'HTTP Custom Cloud Direct',
     protocol: 'auto',
     carrier: 'Universal Multi-ISP',
-    addedAt: 'Live Stream',
+    addedAt: 'Recent Upload',
     status: 'unverified',
-    statusMessage: 'Playsmarty shortlink',
+    statusMessage: 'Checking live temporary storage...',
   },
 ];
 
@@ -86,18 +85,77 @@ export default function PlaysmartyCloudHub({
   const [loading, setLoading] = useState<boolean>(false);
   const [uploading, setUploading] = useState<boolean>(false);
   const [probingAll, setProbingAll] = useState<boolean>(false);
+  const [probingCodes, setProbingCodes] = useState<string[]>([]);
   const [currentStatus, setCurrentStatus] = useState<PlaysmartyStatus | null>(null);
   const [cloudStream, setCloudStream] = useState<PlaysmartyCloudEntry[]>(DEFAULT_PRESET_CLOUDS);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'v2ray' | 'ssh' | 'active'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'v2ray' | 'ssh' | 'active' | 'burned'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'stream' | 'create'>('stream');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load cloud stream from localStorage on mount
+  // Probe all items in given list non-destructively
+  const probeList = async (list: PlaysmartyCloudEntry[]) => {
+    if (!list || list.length === 0) return;
+    setProbingAll(true);
+    try {
+      const updated = await Promise.all(
+        list.map(async entry => {
+          try {
+            const res = await probeStatus(entry.code);
+            return {
+              ...entry,
+              status: (res.active ? 'active' : 'burned_or_expired') as 'active' | 'burned_or_expired',
+              statusMessage: res.message,
+              lastChecked: new Date().toLocaleTimeString(),
+            };
+          } catch {
+            return entry;
+          }
+        })
+      );
+      setCloudStream(updated);
+      try {
+        localStorage.setItem('tweve_playsmarty_cloud_stream', JSON.stringify(updated));
+      } catch {}
+    } finally {
+      setProbingAll(false);
+    }
+  };
+
+  // Probe a single item by code
+  const handleProbeSingle = async (code: string) => {
+    const cleanCode = extractCleanCode(code);
+    if (!cleanCode) return;
+    setProbingCodes(prev => [...prev, cleanCode]);
+    try {
+      const res = await probeStatus(cleanCode);
+      setCloudStream(prev => {
+        const next = prev.map(entry =>
+          entry.code.toLowerCase() === cleanCode.toLowerCase()
+            ? {
+                ...entry,
+                status: (res.active ? 'active' : 'burned_or_expired') as 'active' | 'burned_or_expired',
+                statusMessage: res.message,
+                lastChecked: new Date().toLocaleTimeString(),
+              }
+            : entry
+        );
+        try {
+          localStorage.setItem('tweve_playsmarty_cloud_stream', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    } finally {
+      setProbingCodes(prev => prev.filter(c => c !== cleanCode));
+    }
+  };
+
+  // Load cloud stream from localStorage on mount & start real-time monitoring
   useEffect(() => {
+    let initialList = DEFAULT_PRESET_CLOUDS;
     try {
       const saved = localStorage.getItem('tweve_playsmarty_cloud_stream');
       if (saved) {
@@ -109,10 +167,24 @@ export default function PlaysmartyCloudHub({
               merged.push(def);
             }
           }
-          setCloudStream(merged);
+          initialList = merged;
         }
       }
     } catch {}
+    setCloudStream(initialList);
+
+    // Initial real-time probe across all clouds
+    probeList(initialList);
+
+    // Live continuous status polling interval (every 20s)
+    const timer = setInterval(() => {
+      setCloudStream(current => {
+        probeList(current);
+        return current;
+      });
+    }, 20000);
+
+    return () => clearInterval(timer);
   }, []);
 
   // Save cloud stream to localStorage
@@ -382,10 +454,12 @@ export default function PlaysmartyCloudHub({
     if (activeFilter === 'v2ray') return entry.protocol === 'v2ray';
     if (activeFilter === 'ssh') return entry.protocol === 'ssh';
     if (activeFilter === 'active') return entry.status === 'active';
+    if (activeFilter === 'burned') return entry.status === 'burned_or_expired';
     return true;
   });
 
   const activeCount = cloudStream.filter(c => c.status === 'active').length;
+  const burnedCount = cloudStream.filter(c => c.status === 'burned_or_expired').length;
 
   return (
     <div className="w-full bg-slate-900/90 border border-indigo-500/30 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5">
@@ -410,7 +484,7 @@ export default function PlaysmartyCloudHub({
                 Playsmarty Cloud Stream &middot; link.playsmarty.uk
               </h3>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                {cloudStream.length} Active &amp; Archived Clouds
+                {cloudStream.length} Clouds Registered
               </span>
               {activeCount > 0 && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
@@ -418,9 +492,15 @@ export default function PlaysmartyCloudHub({
                   {activeCount} Live in Storage
                 </span>
               )}
+              {burnedCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                  {burnedCount} Burned / Expired
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Live feed of all cloud configs created on <code className="text-cyan-300">link.playsmarty.uk</code> temporary storage. Share, verify, and preserve without expiration.
+              Real-time monitor of config links on <code className="text-cyan-300 font-mono">link.playsmarty.uk</code> temporary storage. Auto-detects live vs burned/expired states.
             </p>
           </div>
         </div>
@@ -629,7 +709,8 @@ export default function PlaysmartyCloudHub({
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
               {[
                 { id: 'all', label: `All (${cloudStream.length})` },
-                { id: 'active', label: `🟢 Live in Storage (${cloudStream.filter(c => c.status === 'active').length})` },
+                { id: 'active', label: `🟢 Live in Storage (${activeCount})` },
+                { id: 'burned', label: `🔴 Burned / Expired (${burnedCount})` },
                 { id: 'v2ray', label: `⚡ V2Ray (${cloudStream.filter(c => c.protocol === 'v2ray').length})` },
                 { id: 'ssh', label: `🔐 SSH (${cloudStream.filter(c => c.protocol === 'ssh').length})` },
               ].map(f => (
@@ -683,7 +764,7 @@ export default function PlaysmartyCloudHub({
                   </>
                 ) : (
                   <>
-                    <span>🔄</span> Check Storage Status
+                    <span>🔄</span> Refresh Storage States
                   </>
                 )}
               </button>
@@ -707,7 +788,7 @@ export default function PlaysmartyCloudHub({
                       : 'from-slate-900/90 to-slate-950/90 border-slate-800 hover:border-indigo-500/40'
                   }`}
                 >
-                  {/* Card Top: Badges & Remove */}
+                  {/* Card Top: Badges, Live Probe & Remove */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span
@@ -716,7 +797,7 @@ export default function PlaysmartyCloudHub({
                             ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                             : isBurned
                             ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                         }`}
                       >
                         <span
@@ -725,10 +806,10 @@ export default function PlaysmartyCloudHub({
                               ? 'bg-emerald-400 animate-pulse'
                               : isBurned
                               ? 'bg-rose-400'
-                              : 'bg-slate-500'
+                              : 'bg-amber-400 animate-ping'
                           }`}
                         />
-                        {isLive ? 'LIVE IN STORAGE' : isBurned ? 'EXPIRED' : 'READY'}
+                        {isLive ? 'LIVE IN STORAGE' : isBurned ? 'BURNED / EXPIRED' : 'CHECKING...'}
                       </span>
 
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
@@ -742,14 +823,30 @@ export default function PlaysmartyCloudHub({
                       )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCloud(entry.code)}
-                      className="text-slate-600 hover:text-rose-400 text-xs transition cursor-pointer p-1"
-                      title="Remove from list"
-                    >
-                      ✕
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={probingCodes.includes(entry.code)}
+                        onClick={() => handleProbeSingle(entry.code)}
+                        className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold border border-cyan-500/30 flex items-center gap-1 cursor-pointer transition"
+                        title="Probe this shortlink in real time"
+                      >
+                        {probingCodes.includes(entry.code) ? (
+                          <span className="w-2.5 h-2.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <span>🔄 Check</span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCloud(entry.code)}
+                        className="text-slate-600 hover:text-rose-400 text-xs transition cursor-pointer p-1"
+                        title="Remove from stream"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
 
                   {/* Card Mid: Title & Link */}
@@ -771,12 +868,45 @@ export default function PlaysmartyCloudHub({
                     </div>
                   </div>
 
-                  {/* Card Status Description */}
-                  {entry.statusMessage && (
-                    <p className="text-[11px] text-slate-400 leading-tight">
-                      {entry.statusMessage}
-                    </p>
-                  )}
+                  {/* Card Status Description Box */}
+                  <div className="pt-0.5">
+                    {isLive ? (
+                      <div className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 space-y-0.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-extrabold text-emerald-300">
+                            🟢 Live in Temporary Storage
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {entry.lastChecked ? `Checked ${entry.lastChecked}` : 'Live now'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-emerald-200/80 leading-tight">
+                          {entry.statusMessage || 'Config file is waiting on server — ready to verify & import into HTTP Custom.'}
+                        </p>
+                      </div>
+                    ) : isBurned ? (
+                      <div className="p-2 rounded-xl bg-rose-950/30 border border-rose-500/30 space-y-0.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-extrabold text-rose-300">
+                            🔴 Burned / Expired on Server
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {entry.lastChecked ? `Checked ${entry.lastChecked}` : 'Burned'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-rose-200/80 leading-tight">
+                          {entry.statusMessage || 'Link was opened once by HTTP Custom or the 30-minute storage window expired.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="p-2 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                          <span className="text-amber-300 text-[11px] font-semibold">Probing server status...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Card Bottom: Action Buttons */}
                   <div className="pt-1 grid grid-cols-2 gap-2">
