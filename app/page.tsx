@@ -1460,6 +1460,8 @@ export default function ConfigInspectorPage() {
 
         <div className="relative">
           <textarea
+            id="config-input-textarea"
+            aria-label="Config Data, Cloud UUID or Share Link"
             rows={3}
             value={input}
             onChange={(e) => {
@@ -1588,7 +1590,7 @@ export default function ConfigInspectorPage() {
 
       {/* Error Banner */}
       {result?.error && (
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 space-y-4" role="alert">
           <div className="p-5 rounded-2xl bg-rose-950/50 border border-rose-500/40 text-rose-200 flex items-start gap-3.5">
             <svg width="24" height="24" className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
